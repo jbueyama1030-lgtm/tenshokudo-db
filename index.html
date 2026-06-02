@@ -369,10 +369,143 @@ function renderPrefButtons(areaId){const a=AREAS[areaId];document.getElementById
 
 function clickPref(prefId){currentPref=prefId;const pName=ID_PREF[prefId];goScreen('pref');const sd=summaryData[pName]||{};document.getElementById('pref-list-title').textContent=(pName||prefId)+' の企業一覧（'+(sd['登録企業数']||0)+'社）';document.getElementById('pref-metrics').innerHTML=`<div class="metric"><div class="metric-label">平均採用単価（掲載）</div><div class="metric-value" style="font-size:15px">${sd['平均採用単価（掲載型）']?fmt(sd['平均採用単価（掲載型）']):'—'}</div></div><div class="metric"><div class="metric-label">平均採用単価（紹介）</div><div class="metric-value" style="font-size:15px">${sd['平均採用単価（紹介型）']?fmt(sd['平均採用単価（紹介型）']):'—'}</div></div><div class="metric"><div class="metric-label">年間採用目標（平均）</div><div class="metric-value">${sd['年間採用目標（平均）']?fmtN(sd['年間採用目標（平均）'])+'名':'—'}</div></div><div class="metric"><div class="metric-label">主要媒体</div><div class="metric-value" style="font-size:13px">${sd['主要利用媒体（最多）']||'—'}</div></div>`;const prefs=companiesData.filter(c=>c['都道府県']===pName);const list=document.getElementById('company-list');if(!prefs.length){list.innerHTML=`<div style="padding:24px;text-align:center;color:#888780;font-size:13px"><i class="ti ti-building-off" style="font-size:24px;display:block;margin-bottom:8px"></i>まだ企業データがありません<br><button class="btn btn-primary" style="margin-top:10px" onclick="startForm()">+ ヒアリング入力</button></div>`;return;}list.innerHTML=prefs.map((c,i)=>`<div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})"><div style="width:32px;height:32px;border-radius:7px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${c['会社名']||'—'}</div><div style="font-size:11px;color:#888780">${c['市区町村']||''} ${c['保有車両数']?'/ 車両'+c['保有車両数']+'台':''}</div><div style="margin-top:4px"><span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span></div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div><div style="font-size:11px;color:#888780">掲載単価</div></div><i class="ti ti-chevron-right" style="font-size:15px;color:#888780"></i></div>`).join('');}
 function heatClass(h){if(!h)return'b-gray';if(h.includes('拡大'))return'b-green';if(h.includes('安定'))return'b-blue';if(h.includes('フォロー'))return'b-amber';return'b-gray';}
-function showCompany(idx){const c=companiesData[idx];if(!c)return;goScreen('company');document.getElementById('company-detail').innerHTML=`<div style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:12px;align-items:flex-start"><div style="width:46px;height:46px;border-radius:10px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div><div style="flex:1"><div style="font-size:15px;font-weight:500;margin-bottom:3px">${c['会社名']||'—'}</div><div style="font-size:12px;color:#888780">${c['都道府県']||''} ${c['市区町村']||''}</div><div style="margin-top:6px"><span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span></div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px"><div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title"><i class="ti ti-building" style="font-size:13px;margin-right:4px"></i>企業情報</div></div><div class="card-body"><div class="info-row"><span class="info-label">保有車両数</span><span class="info-val">${fmtN(c['保有車両数'])} 台</span></div><div class="info-row"><span class="info-label">ドライバー数</span><span class="info-val">${fmtN(c['ドライバー数'])} 名</span></div><div class="info-row"><span class="info-label">月商</span><span class="info-val">${fmtN(c['月商（万円）'])} 万円</span></div><div class="info-row"><span class="info-label">配車割合</span><span class="info-val" style="font-size:12px">${c['配車割合']||'—'}</span></div><div class="info-row"><span class="info-label">担当者</span><span class="info-val" style="font-size:12px">${c['担当者名']||'—'}</span></div></div></div><div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title"><i class="ti ti-coin" style="font-size:13px;margin-right:4px"></i>採用コスト</div></div><div class="card-body"><div class="info-row"><span class="info-label">掲載型単価</span><span class="info-val" style="color:#3B6D11">${fmt(c['掲載型採用単価'])}</span></div><div class="info-row"><span class="info-label">紹介型単価</span><span class="info-val">${fmt(c['紹介型採用単価'])}</span></div><div class="info-row"><span class="info-label">紹介手数料率</span><span class="info-val">${c['紹介手数料率']||'—'} %</span></div><div class="info-row"><span class="info-label">月額広告費</span><span class="info-val">${fmt(c['月額広告費'])}</span></div><div class="info-row"><span class="info-label">年間採用目標</span><span class="info-val">${fmtN(c['年間採用目標'])} 名</span></div></div></div></div><div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-notes" style="font-size:13px;margin-right:4px"></i>営業メモ</div></div><div class="card-body"><div style="font-size:13px;color:#888780;line-height:1.6;margin-bottom:10px">${c['商談メモ']||'—'}</div>${c['次回アクション']?`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:7px 10px;background:#F1EFE8;border-radius:8px"><span style="width:9px;height:9px;border-radius:50%;background:#1D9E75;flex-shrink:0"></span><span style="flex:1">${c['次回アクション']}</span><span style="color:#888780">${c['期日']||''}</span></div>`:''}</div></div>`;}
+function showCompany(idx){
+  const c=companiesData[idx];if(!c)return;
+  goScreen('company');
+  document.getElementById('company-detail').innerHTML=`
+    <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:12px;align-items:flex-start">
+      <div style="width:46px;height:46px;border-radius:10px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:500;margin-bottom:3px">${c['会社名']||'—'}</div>
+        <div style="font-size:12px;color:#888780">${c['都道府県']||''} ${c['市区町村']||''}</div>
+        <div style="margin-top:6px"><span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span></div>
+      </div>
+      <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;flex-shrink:0" onclick="startEdit(${idx})">
+        <i class="ti ti-edit"></i> 編集
+      </button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title"><i class="ti ti-building" style="font-size:13px;margin-right:4px"></i>企業情報</div></div>
+        <div class="card-body">
+          <div class="info-row"><span class="info-label">保有車両数</span><span class="info-val">${fmtN(c['保有車両数'])} 台</span></div>
+          <div class="info-row"><span class="info-label">ドライバー数</span><span class="info-val">${fmtN(c['ドライバー数'])} 名</span></div>
+          <div class="info-row"><span class="info-label">月商</span><span class="info-val">${fmtN(c['月商（万円）'])} 万円</span></div>
+          <div class="info-row"><span class="info-label">配車割合</span><span class="info-val" style="font-size:12px">${c['配車割合']||'—'}</span></div>
+          <div class="info-row"><span class="info-label">担当者</span><span class="info-val" style="font-size:12px">${c['担当者名']||'—'}</span></div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title"><i class="ti ti-coin" style="font-size:13px;margin-right:4px"></i>採用コスト</div></div>
+        <div class="card-body">
+          <div class="info-row"><span class="info-label">掲載型単価</span><span class="info-val" style="color:#3B6D11">${fmt(c['掲載型採用単価'])}</span></div>
+          <div class="info-row"><span class="info-label">紹介型単価</span><span class="info-val">${fmt(c['紹介型採用単価'])}</span></div>
+          <div class="info-row"><span class="info-label">紹介手数料率</span><span class="info-val">${c['紹介手数料率']||'—'} %</span></div>
+          <div class="info-row"><span class="info-label">月額広告費</span><span class="info-val">${fmt(c['月額広告費'])}</span></div>
+          <div class="info-row"><span class="info-label">年間採用目標</span><span class="info-val">${fmtN(c['年間採用目標'])} 名</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-news" style="font-size:13px;margin-right:4px"></i>利用媒体・状況</div></div>
+      <div class="card-body">
+        <div class="info-row"><span class="info-label">利用媒体</span><span class="info-val" style="font-size:12px">${c['利用媒体']||'—'}</span></div>
+        <div class="info-row"><span class="info-label">募集シフト</span><span class="info-val" style="font-size:12px">${c['募集シフト']||'—'}</span></div>
+        <div class="info-row"><span class="info-label">導入アプリ</span><span class="info-val" style="font-size:12px">${c['導入アプリ']||'—'}</span></div>
+        <div class="info-row"><span class="info-label">定着率</span><span class="info-val" style="font-size:12px">${c['定着率']||'—'}</span></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-notes" style="font-size:13px;margin-right:4px"></i>営業メモ</div></div>
+      <div class="card-body">
+        <div style="font-size:13px;color:#888780;line-height:1.6;margin-bottom:10px">${c['商談メモ']||'—'}</div>
+        ${c['次回アクション']?`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:7px 10px;background:#F1EFE8;border-radius:8px"><span style="width:9px;height:9px;border-radius:50%;background:#1D9E75;flex-shrink:0"></span><span style="flex:1">${c['次回アクション']}</span><span style="color:#888780">${c['期日']||''}</span></div>`:''}
+      </div>
+    </div>`;
+}
+
+// 編集モード：既存データをフォームに流し込む
+function startEdit(idx){
+  const c=companiesData[idx];if(!c)return;
+  editingIdx=idx;
+  editingRowIndex=c._rowIndex;
+  formStep=1;
+  resetForm();
+  goScreen('form');
+  updateFormStep();
+
+  // クイック追加ボタン
+  document.getElementById('haisha-quick').innerHTML=DEFAULT_HAISHA.map(n=>`<button onclick="quickAdd('${n}')" style="padding:5px 10px;border:0.5px solid rgba(0,0,0,0.15);border-radius:20px;font-size:12px;cursor:pointer;background:#fff;color:#888780;font-family:inherit">${n}</button>`).join('');
+  document.getElementById('haisha-new').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addHaisha();}});
+
+  // 既存データをフォームに流し込む
+  setTimeout(()=>{
+    setVal('f-name', c['会社名']);
+    setVal('f-pref', c['都道府県']);
+    setVal('f-city', c['市区町村']);
+    setVal('f-cars', c['保有車両数']);
+    setVal('f-drivers', c['ドライバー数']);
+    setVal('f-sales', c['月商（万円）']);
+    setVal('f-contact', c['担当者名']);
+    setVal('f-target', c['年間採用目標']);
+    setVal('f-monthly', c['月間採用実績']);
+    setVal('f-issue', c['採用課題']);
+    setVal('f-retention', c['定着率']);
+    setVal('f-license', c['免許取得支援']);
+    setVal('f-cost-ad', c['掲載型採用単価']);
+    setVal('f-cost-ref', c['紹介型採用単価']);
+    setVal('f-fee-rate', c['紹介手数料率']);
+    setVal('f-monthly-ad', c['月額広告費']);
+    setVal('f-past-media', c['辞めた媒体・理由']);
+    setVal('f-memo', c['商談メモ']);
+    setVal('f-action', c['次回アクション']);
+    setVal('f-due', c['期日']);
+    setVal('f-sales', c['担当営業']);
+
+    // 配車割合
+    if(c['配車割合']){
+      c['配車割合'].split(' / ').forEach(item=>{
+        const m=item.match(/^(.+?)\s+(\d+)%$/);
+        if(m) haishaItems.push({name:m[1],pct:Number(m[2])});
+      });
+      renderHaisha();
+    }
+
+    // チェックボックス系
+    setChecks('shift-checks', c['募集シフト']);
+    setChecks('app-checks', c['導入アプリ']);
+    setChecks('media-checks', c['利用媒体']);
+
+    // タグ系
+    setTag('age-tags', c['求める年齢層']);
+    setTag('heat-tags', c['温度感']);
+
+    // フォームタイトルを「編集」に変更
+    document.getElementById('form-step-title').textContent='企業情報を編集';
+  }, 50);
+}
+
+function setVal(id, val){const el=document.getElementById(id);if(el&&val!==undefined&&val!=='')el.value=val;}
+function setChecks(groupId, valStr){
+  if(!valStr)return;
+  const vals=valStr.split('・');
+  document.querySelectorAll('#'+groupId+' .check-item').forEach(item=>{
+    const v=item.querySelector('input').value;
+    if(vals.includes(v)){item.classList.add('selected');item.querySelector('input').checked=true;}
+  });
+}
+function setTag(groupId, val){
+  if(!val)return;
+  document.querySelectorAll('#'+groupId+' .tag-btn').forEach(btn=>{
+    if(btn.textContent===val){btn.classList.add('active');}
+  });
+}
 
 const DEFAULT_HAISHA=['GO','Uber Taxi','S.RIDE','自社','その他'];
-function startForm(){formStep=1;resetForm();goScreen('form');updateFormStep();document.getElementById('haisha-quick').innerHTML=DEFAULT_HAISHA.map(n=>`<button onclick="quickAdd('${n}')" style="padding:5px 10px;border:0.5px solid rgba(0,0,0,0.15);border-radius:20px;font-size:12px;cursor:pointer;background:#fff;color:#888780;font-family:inherit">${n}</button>`).join('');document.getElementById('haisha-new').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addHaisha();}});}
+let editingIdx=null, editingRowIndex=null;
+
+function startForm(){
+  editingIdx=null; editingRowIndex=null;
+  formStep=1;resetForm();goScreen('form');updateFormStep();
+  document.getElementById('haisha-quick').innerHTML=DEFAULT_HAISHA.map(n=>`<button onclick="quickAdd('${n}')" style="padding:5px 10px;border:0.5px solid rgba(0,0,0,0.15);border-radius:20px;font-size:12px;cursor:pointer;background:#fff;color:#888780;font-family:inherit">${n}</button>`).join('');
+  document.getElementById('haisha-new').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addHaisha();}});
+}
 function updateFormStep(){for(let i=1;i<=4;i++)document.getElementById('fstep'+i).style.display=i===formStep?'block':'none';document.getElementById('form-progress').style.width=(formStep/4*100)+'%';document.getElementById('form-step-title').textContent=['企業基本情報','採用状況','採用コスト','営業メモ'][formStep-1];document.getElementById('form-step-num').textContent=formStep+' / 4';window.scrollTo(0,0);}
 function fNext(){if(formStep<4){formStep++;updateFormStep();}}
 function fPrev(){if(formStep>1){formStep--;updateFormStep();}}
@@ -386,7 +519,45 @@ function getChecked(id){return[...document.querySelectorAll('#'+id+' .check-item
 function getActiveTag(id){const el=document.querySelector('#'+id+' .tag-btn.active');return el?el.textContent:'';}
 function fVal(id){return(document.getElementById(id)||{}).value||'';}
 
-async function submitForm(){const name=fVal('f-name');if(!name){showToast('会社名を入力してください');return;}const pref=fVal('f-pref');if(!pref){showToast('都道府県を選択してください');return;}const haishaTxt=haishaItems.length?haishaItems.map(i=>i.name+' '+Math.round(i.pct||0)+'%').join(' / '):'';const params={action:'save',companyName:name,pref,city:fVal('f-city'),cars:fVal('f-cars'),drivers:fVal('f-drivers'),sales:fVal('f-sales'),contact:fVal('f-contact'),haisha:haishaTxt,apps:getChecked('app-checks'),hiringTarget:fVal('f-target'),hiringMonthly:fVal('f-monthly'),hiringIssue:fVal('f-issue'),retention:fVal('f-retention'),shifts:getChecked('shift-checks'),ageGroup:getActiveTag('age-tags'),license:fVal('f-license'),costAd:fVal('f-cost-ad'),costRef:fVal('f-cost-ref'),feeRate:fVal('f-fee-rate'),media:getChecked('media-checks'),monthlyAd:fVal('f-monthly-ad'),pastMedia:fVal('f-past-media'),memo:fVal('f-memo'),heat:getActiveTag('heat-tags'),nextAction:fVal('f-action'),dueDate:fVal('f-due'),salesPerson:fVal('f-sales')};showLoader(true);try{const j=await gasGet(params);if(j.ok){showToast('✓ Google Sheetsに保存しました！');await loadData();currentPref=PREF_ID[pref]||null;if(currentArea&&currentPref)clickPref(currentPref);else if(currentPref){currentArea=areaOfPref[currentPref];clickPref(currentPref);}else goScreen('home');}else{showToast('保存エラー: '+(j.error||'不明'));}}catch(e){showToast('通信エラー: '+e.message);}showLoader(false);}
+async function submitForm(){
+  const name=fVal('f-name');if(!name){showToast('会社名を入力してください');return;}
+  const pref=fVal('f-pref');if(!pref){showToast('都道府県を選択してください');return;}
+  const haishaTxt=haishaItems.length?haishaItems.map(i=>i.name+' '+Math.round(i.pct||0)+'%').join(' / '):'';
+  const params={
+    companyName:name,pref,city:fVal('f-city'),
+    cars:fVal('f-cars'),drivers:fVal('f-drivers'),sales:fVal('f-sales'),
+    contact:fVal('f-contact'),haisha:haishaTxt,apps:getChecked('app-checks'),
+    hiringTarget:fVal('f-target'),hiringMonthly:fVal('f-monthly'),
+    hiringIssue:fVal('f-issue'),retention:fVal('f-retention'),
+    shifts:getChecked('shift-checks'),ageGroup:getActiveTag('age-tags'),
+    license:fVal('f-license'),costAd:fVal('f-cost-ad'),costRef:fVal('f-cost-ref'),
+    feeRate:fVal('f-fee-rate'),media:getChecked('media-checks'),
+    monthlyAd:fVal('f-monthly-ad'),pastMedia:fVal('f-past-media'),
+    memo:fVal('f-memo'),heat:getActiveTag('heat-tags'),
+    nextAction:fVal('f-action'),dueDate:fVal('f-due'),salesPerson:fVal('f-sales'),
+  };
+  // 編集モードの場合はactionをupdateにしてrowIndexを付与
+  if(editingRowIndex){
+    params.action='update';
+    params.rowIndex=editingRowIndex;
+  } else {
+    params.action='save';
+  }
+  showLoader(true);
+  try{
+    const j=await gasGet(params);
+    if(j.ok){
+      showToast(editingRowIndex?'✓ 更新しました！':'✓ Google Sheetsに保存しました！');
+      editingIdx=null; editingRowIndex=null;
+      await loadData();
+      currentPref=PREF_ID[pref]||null;
+      if(currentArea&&currentPref)clickPref(currentPref);
+      else if(currentPref){currentArea=areaOfPref[currentPref];clickPref(currentPref);}
+      else goScreen('home');
+    }else{showToast('エラー: '+(j.error||'不明'));}
+  }catch(e){showToast('通信エラー: '+e.message);}
+  showLoader(false);
+}
 function resetForm(){haishaItems=[];document.querySelectorAll('#screen-form input:not([type=checkbox]),#screen-form select,#screen-form textarea').forEach(el=>el.value='');document.querySelectorAll('#screen-form .check-item.selected').forEach(el=>el.classList.remove('selected'));document.querySelectorAll('#screen-form input[type=checkbox]').forEach(el=>el.checked=false);document.querySelectorAll('#screen-form .tag-btn.active').forEach(el=>el.classList.remove('active'));renderHaisha();}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function showLoader(show){document.getElementById('loader').style.display=show?'flex':'none';}
