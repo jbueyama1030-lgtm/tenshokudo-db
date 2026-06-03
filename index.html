@@ -55,8 +55,9 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .check-item label{font-size:13px;cursor:pointer;flex:1}
 .check-item.selected label{color:#3C3489;font-weight:500}
 .tag-group{display:flex;flex-wrap:wrap;gap:7px}
-.tag-btn{padding:7px 13px;border:0.5px solid rgba(0,0,0,0.2);border-radius:20px;font-size:13px;cursor:pointer;background:#fff;color:#888780}
-.tag-btn.active{background:#534AB7;color:#fff;border-color:#534AB7}
+.tag-btn{padding:7px 13px;border:1.5px solid rgba(0,0,0,0.15);border-radius:20px;font-size:13px;cursor:pointer;background:#fff;color:#888780;transition:all 0.15s;user-select:none}
+.tag-btn:hover{border-color:#534AB7;color:#534AB7}
+.tag-btn.active{background:#534AB7!important;color:#fff!important;border-color:#534AB7!important;font-weight:600;box-shadow:0 2px 6px rgba(83,74,183,0.3)}
 .unit-input{position:relative}
 .unit-input input{padding-right:36px}
 .unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;color:#888780;pointer-events:none}
@@ -735,7 +736,33 @@ function startForm(){
 function updateFormStep(){for(let i=1;i<=4;i++)document.getElementById('fstep'+i).style.display=i===formStep?'block':'none';document.getElementById('form-progress').style.width=(formStep/4*100)+'%';document.getElementById('form-step-title').textContent=['企業基本情報','採用状況','採用コスト','営業メモ'][formStep-1];document.getElementById('form-step-num').textContent=formStep+' / 4';window.scrollTo(0,0);}
 function fNext(){if(formStep<4){formStep++;updateFormStep();}}
 function fPrev(){if(formStep>1){formStep--;updateFormStep();}}
-function renderHaisha(){const list=document.getElementById('haisha-list');const total=haishaItems.reduce((s,i)=>s+(Number(i.pct)||0),0);list.innerHTML=haishaItems.map((item,idx)=>`<div class="haisha-row"><span class="haisha-name">${item.name}</span><div class="haisha-iw"><input type="number" min="0" max="100" value="${item.pct}" placeholder="0" oninput="haishaItems[${idx}].pct=Math.min(100,Math.max(0,Number(this.value)));renderHaisha()"><span class="haisha-unit">%</span></div><button class="haisha-del" onclick="removeHaisha(${idx})"><i class="ti ti-x"></i></button></div>`).join('');const badge=document.getElementById('haisha-badge');if(!haishaItems.length){badge.style.display='none';return;}badge.style.display='inline-flex';const r=Math.round(total);badge.className='total-badge '+(r===100?'total-ok':'total-ng');badge.innerHTML=r===100?'<i class="ti ti-check"></i> 合計 100%':'<i class="ti ti-alert-circle"></i> 合計 '+r+'%（100%に調整してください）';}
+function renderHaisha(){
+  const list=document.getElementById('haisha-list');
+  const total=haishaItems.reduce((s,i)=>s+(Number(i.pct)||0),0);
+  // ★ oninput→onblur+onchangeに変更。フォーカス中はrenderHaishaを呼ばず自由に入力できる
+  list.innerHTML=haishaItems.map((item,idx)=>`
+    <div class="haisha-row">
+      <span class="haisha-name">${item.name}</span>
+      <div class="haisha-iw">
+        <input type="number" min="0" max="100" value="${item.pct||''}" placeholder="0"
+          onchange="haishaItems[${idx}].pct=Math.min(100,Math.max(0,Number(this.value)||0));updateHaishaBadge()"
+          onblur="haishaItems[${idx}].pct=Math.min(100,Math.max(0,Number(this.value)||0));updateHaishaBadge()">
+        <span class="haisha-unit">%</span>
+      </div>
+      <button class="haisha-del" onclick="removeHaisha(${idx})"><i class="ti ti-x"></i></button>
+    </div>`).join('');
+  updateHaishaBadge();
+}
+
+function updateHaishaBadge(){
+  const badge=document.getElementById('haisha-badge');
+  if(!haishaItems.length){badge.style.display='none';return;}
+  const total=haishaItems.reduce((s,i)=>s+(Number(i.pct)||0),0);
+  badge.style.display='inline-flex';
+  const r=Math.round(total);
+  badge.className='total-badge '+(r===100?'total-ok':'total-ng');
+  badge.innerHTML=r===100?'<i class="ti ti-check"></i> 合計 100%':'<i class="ti ti-alert-circle"></i> 合計 '+r+'%（100%に調整してください）';
+}
 function addHaisha(){const n=(document.getElementById('haisha-new').value||'').trim();if(!n)return;haishaItems.push({name:n,pct:0});document.getElementById('haisha-new').value='';renderHaisha();}
 function removeHaisha(idx){haishaItems.splice(idx,1);renderHaisha();}
 function quickAdd(name){if(haishaItems.find(i=>i.name===name))return;haishaItems.push({name,pct:0});renderHaisha();}
