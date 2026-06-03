@@ -85,6 +85,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .loader-wrap{position:fixed;inset:0;background:rgba(255,255,255,0.75);display:flex;align-items:center;justify-content:center;z-index:998}
 .spinner{width:32px;height:32px;border:3px solid #CECBF6;border-top-color:#534AB7;border-radius:50%;animation:spin 0.8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.sales-tabs{display:flex;gap:0;background:#fff;border-bottom:0.5px solid rgba(0,0,0,0.12);padding:0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.sales-tab{flex-shrink:0;padding:10px 16px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:#888780;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.sales-tab:hover{color:#533AB7}
+.sales-tab.active{color:#533AB7;border-bottom-color:#533AB7;font-weight:500}
+.sales-tab .cnt{font-size:11px;background:#F1EFE8;color:#5F5E5A;padding:1px 6px;border-radius:10px}
+.sales-tab.active .cnt{background:#EEEDFE;color:#3C3489}
 </style>
 </head>
 <body>
@@ -99,9 +105,45 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <button class="btn btn-primary" onclick="startForm()"><i class="ti ti-plus"></i> ヒアリング入力</button>
   </div>
 </div>
+<!-- 担当営業タブ -->
+<div class="sales-tabs" id="sales-tabs">
+  <div class="sales-tab active" onclick="switchSalesTab('all',this)" id="tab-all">
+    <i class="ti ti-globe"></i> 全員 <span class="cnt" id="cnt-all">0</span>
+  </div>
+</div>
 <div class="breadcrumb" id="breadcrumb"></div>
 
 <div class="content">
+  <!-- 担当営業マイページ -->
+  <div class="screen" id="screen-mypage">
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px" id="my-metrics"></div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" id="my-list-title">担当企業一覧</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <select id="my-heat-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
+                <option value="">全ステータス</option>
+                <option value="拡大">◎ 拡大見込み</option>
+                <option value="安定">○ 安定継続</option>
+                <option value="フォロー">△ 要フォロー</option>
+                <option value="リスク">× 解約リスク</option>
+                <option value="新規">新規検討中</option>
+              </select>
+              <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="startForm()"><i class="ti ti-plus"></i> 企業追加</button>
+            </div>
+          </div>
+          <div id="my-company-list"></div>
+        </div>
+      </div>
+      <div style="width:190px;flex-shrink:0">
+        <div style="font-size:12px;font-weight:500;color:#888780;margin-bottom:8px">次回アクション</div>
+        <div id="my-actions"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="screen active" id="screen-home">
     <div style="display:flex;gap:14px;align-items:flex-start">
       <div style="flex:1;min-width:0">
@@ -347,12 +389,166 @@ let formStep=1,haishaItems=[];
 const fmt=n=>n?'¥'+Number(n).toLocaleString():'—';
 const fmtN=n=>n?Number(n).toLocaleString():'—';
 
-function goScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');document.getElementById('btn-top').style.display=id==='home'?'none':'';renderBreadcrumb(id);}
-function renderBreadcrumb(id){const bc=document.getElementById('breadcrumb');const sep='<span style="color:#888780">/</span>';const home='<span class="bc-link" onclick="goScreen(\'home\')">全国</span>';const aL=currentArea?`<span class="bc-link" onclick="clickArea('${currentArea}')">${AREAS[currentArea].label}</span>`:'';const pL=currentPref?`<span class="bc-link" onclick="clickPref('${currentPref}')">${ID_PREF[currentPref]||currentPref}</span>`:'';let h='<i class="ti ti-home" style="font-size:13px"></i>'+sep;if(id==='home')h+='<span>全国</span>';else if(id==='area')h+=home+sep+'<span>'+AREAS[currentArea].label+'</span>';else if(id==='pref')h+=home+sep+aL+sep+'<span>'+(ID_PREF[currentPref]||currentPref)+'</span>';else if(id==='company')h+=home+sep+aL+sep+pL+sep+'<span>企業詳細</span>';else h+=home+sep+(currentArea?aL+sep:'')+(currentPref?pL+sep:'')+'<span>ヒアリング入力</span>';bc.innerHTML=h;}
+let currentSalesTab='all'; // 現在選択中の担当営業タブ
+
+function goScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+  document.getElementById('btn-top').style.display=(id==='home'||id==='mypage')?'none':'';
+  renderBreadcrumb(id);
+}
+
+function renderBreadcrumb(id){
+  const bc=document.getElementById('breadcrumb');
+  const sep='<span style="color:#888780">/</span>';
+  const home='<span class="bc-link" onclick="goScreen(\'home\')">全国</span>';
+  const aL=currentArea?`<span class="bc-link" onclick="clickArea('${currentArea}')">${AREAS[currentArea].label}</span>`:'';
+  const pL=currentPref?`<span class="bc-link" onclick="clickPref('${currentPref}')">${ID_PREF[currentPref]||currentPref}</span>`:'';
+  let h='<i class="ti ti-home" style="font-size:13px"></i>'+sep;
+  if(id==='home')      h+='<span>全国</span>';
+  else if(id==='mypage') h+='<span>'+(currentSalesTab==='all'?'全員':currentSalesTab)+'の担当企業</span>';
+  else if(id==='area')   h+=home+sep+'<span>'+AREAS[currentArea].label+'</span>';
+  else if(id==='pref')   h+=home+sep+aL+sep+'<span>'+(ID_PREF[currentPref]||currentPref)+'</span>';
+  else if(id==='company')h+=home+sep+aL+sep+pL+sep+'<span>企業詳細</span>';
+  else h+=home+sep+(currentArea?aL+sep:'')+(currentPref?pL+sep:'')+'<span>ヒアリング入力</span>';
+  bc.innerHTML=h;
+}
+
+// =====================================================
+// 担当営業タブ
+// =====================================================
+function renderSalesTabs(){
+  // 担当営業の一覧を抽出
+  const salesSet=new Set(companiesData.map(c=>c['担当営業']).filter(s=>s&&s.trim()));
+  const salesList=[...salesSet].sort();
+  const total=companiesData.length;
+
+  const tabsEl=document.getElementById('sales-tabs');
+  // 全員タブ
+  let html=`<div class="sales-tab ${currentSalesTab==='all'?'active':''}" onclick="switchSalesTab('all',this)">
+    <i class="ti ti-globe"></i> 全員 <span class="cnt">${total}</span>
+  </div>`;
+  // 担当者ごとのタブ
+  salesList.forEach(name=>{
+    const cnt=companiesData.filter(c=>c['担当営業']===name).length;
+    html+=`<div class="sales-tab ${currentSalesTab===name?'active':''}" onclick="switchSalesTab('${name}',this)">
+      <i class="ti ti-user"></i> ${name} <span class="cnt">${cnt}</span>
+    </div>`;
+  });
+  // 未割当
+  const unassigned=companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim()).length;
+  if(unassigned>0){
+    html+=`<div class="sales-tab ${currentSalesTab==='unassigned'?'active':''}" onclick="switchSalesTab('unassigned',this)">
+      <i class="ti ti-user-question"></i> 未割当 <span class="cnt">${unassigned}</span>
+    </div>`;
+  }
+  tabsEl.innerHTML=html;
+}
+
+function switchSalesTab(salesName, el){
+  currentSalesTab=salesName;
+  // タブのactive切り替え
+  document.querySelectorAll('.sales-tab').forEach(t=>t.classList.remove('active'));
+  if(el) el.classList.add('active');
+
+  if(salesName==='all'){
+    // 全員 → 地図トップへ
+    goScreen('home');
+  } else {
+    // 担当者ページへ
+    goScreen('mypage');
+    renderMyPage(salesName);
+  }
+}
+
+function renderMyPage(salesName){
+  // 対象企業を絞り込み
+  let filtered;
+  if(salesName==='unassigned'){
+    filtered=companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim());
+  } else {
+    filtered=companiesData.filter(c=>c['担当営業']===salesName);
+  }
+
+  const label=salesName==='unassigned'?'未割当':salesName;
+  document.getElementById('my-list-title').textContent=label+' の担当企業（'+filtered.length+'社）';
+
+  // メトリクス
+  const tankas=filtered.map(c=>Number(c['掲載型採用単価']||0)).filter(v=>v>0);
+  const avgTanka=tankas.length?Math.round(tankas.reduce((a,b)=>a+b,0)/tankas.length):null;
+  const hot=filtered.filter(c=>(c['温度感']||'').includes('拡大')).length;
+  const followUp=filtered.filter(c=>(c['温度感']||'').includes('フォロー')||(c['温度感']||'').includes('リスク')).length;
+  // 期日が今日〜1週間以内のアクション数
+  const now=new Date(); const week=new Date(now.getTime()+7*24*60*60*1000);
+  const urgentActions=filtered.filter(c=>{
+    if(!c['期日'])return false;
+    const d=new Date(c['期日']);return d>=now&&d<=week;
+  }).length;
+
+  document.getElementById('my-metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">担当企業数</div><div class="metric-value">${filtered.length}社</div></div>
+    <div class="metric"><div class="metric-label">平均採用単価（掲載）</div><div class="metric-value" style="font-size:15px">${avgTanka?fmt(avgTanka):'—'}</div></div>
+    <div class="metric"><div class="metric-label" style="color:#3B6D11">◎ 拡大見込み</div><div class="metric-value" style="color:#3B6D11">${hot}社</div></div>
+    <div class="metric"><div class="metric-label" style="color:#854F0B">要対応（フォロー・リスク）</div><div class="metric-value" style="color:#854F0B">${followUp}社</div></div>`;
+
+  // 次回アクション一覧（右サイドバー）
+  const withAction=filtered.filter(c=>c['次回アクション']).sort((a,b)=>{
+    if(!a['期日'])return 1; if(!b['期日'])return -1;
+    return new Date(a['期日'])-new Date(b['期日']);
+  });
+  document.getElementById('my-actions').innerHTML=withAction.length?
+    withAction.map(c=>{
+      const d=c['期日']?new Date(c['期日']):null;
+      const isUrgent=d&&d<=week&&d>=now;
+      const isPast=d&&d<now;
+      return `<div style="background:#fff;border:0.5px solid ${isPast?'#FCEBEB':isUrgent?'#FAEEDA':'rgba(0,0,0,0.12)'};border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer" onclick="showCompany(${companiesData.indexOf(c)})">
+        <div style="font-size:12px;font-weight:500;margin-bottom:4px">${c['会社名']||'—'}</div>
+        <div style="font-size:11px;color:#888780;margin-bottom:4px">${c['次回アクション']||''}</div>
+        <div style="font-size:11px;font-weight:500;color:${isPast?'#A32D2D':isUrgent?'#854F0B':'#888780'}">${c['期日']||'期日なし'} ${isPast?'⚠ 期限切れ':isUrgent?'⏰ 今週中':''}</div>
+      </div>`;
+    }).join('')
+    :'<div style="font-size:12px;color:#888780;padding:12px 0">アクション予定なし</div>';
+
+  renderMyList(filtered);
+}
+
+function renderMyList(preFiltered){
+  const salesName=currentSalesTab;
+  let filtered=preFiltered||
+    (salesName==='unassigned'?companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim())
+    :companiesData.filter(c=>c['担当営業']===salesName));
+
+  // 温度感フィルター
+  const heatFilter=document.getElementById('my-heat-filter')?.value||'';
+  if(heatFilter) filtered=filtered.filter(c=>(c['温度感']||'').includes(heatFilter));
+
+  const list=document.getElementById('my-company-list');
+  if(!filtered.length){
+    list.innerHTML='<div style="padding:24px;text-align:center;color:#888780;font-size:13px"><i class="ti ti-building-off" style="font-size:24px;display:block;margin-bottom:8px"></i>該当する企業がありません</div>';
+    return;
+  }
+  list.innerHTML=filtered.map(c=>`
+    <div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})">
+      <div style="width:32px;height:32px;border-radius:7px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500">${c['会社名']||'—'}</div>
+        <div style="font-size:11px;color:#888780">${c['都道府県']||''} ${c['市区町村']||''} ${c['保有車両数']?'/ '+c['保有車両数']+'台':''}</div>
+        <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">
+          <span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span>
+          ${c['次回アクション']?`<span style="font-size:11px;color:#888780">${c['次回アクション']} ${c['期日']?'/ '+c['期日']:''}</span>`:''}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div>
+        <div style="font-size:11px;color:#888780">${c['都道府県']||''}</div>
+      </div>
+      <i class="ti ti-chevron-right" style="font-size:15px;color:#888780"></i>
+    </div>`).join('');
+}
 
 async function gasGet(params){const url=GAS_URL+'?'+new URLSearchParams(params).toString();const r=await fetch(url);return r.json();}
 
-async function loadData(){showLoader(true);try{const[j1,j2]=await Promise.all([gasGet({action:'getSummary'}),gasGet({action:'getAll'})]);summaryData={};if(j1.ok&&j1.data)j1.data.forEach(row=>{if(row['都道府県'])summaryData[row['都道府県']]=row;});companiesData=j2.ok?j2.data:[];updateAreaStats();if(allFeatures)renderHomeMap();}catch(e){showToast('データ読み込みエラー: '+e.message);}showLoader(false);}
+async function loadData(){showLoader(true);try{const[j1,j2]=await Promise.all([gasGet({action:'getSummary'}),gasGet({action:'getAll'})]);summaryData={};if(j1.ok&&j1.data)j1.data.forEach(row=>{if(row['都道府県'])summaryData[row['都道府県']]=row;});companiesData=j2.ok?j2.data:[];updateAreaStats();renderSalesTabs();if(allFeatures)renderHomeMap();}catch(e){showToast('データ読み込みエラー: '+e.message);}showLoader(false);}
 function updateAreaStats(){Object.entries(AREAS).forEach(([aid,a])=>{let total=0,tankas=[];a.prefs.forEach(pid=>{const pName=ID_PREF[pid];if(pName&&summaryData[pName]){total+=Number(summaryData[pName]['登録企業数']||0);const t=Number(summaryData[pName]['平均採用単価（掲載型）']||0);if(t>0)tankas.push(t);}});a.companies=total;a.avgTanka=tankas.length?Math.round(tankas.reduce((a,b)=>a+b,0)/tankas.length):null;});}
 
 function getBBoxRaw(coords){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;coords.forEach(([x,y])=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);});return{minX,minY,maxX,maxY};}
