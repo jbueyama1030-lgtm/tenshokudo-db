@@ -123,6 +123,13 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
           <div class="card-head">
             <div class="card-title" id="my-list-title">担当企業一覧</div>
             <div style="display:flex;align-items:center;gap:8px">
+              <select id="my-status-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
+                <option value="">全ステータス</option>
+                <option value="契約済み">✅ 契約済み</option>
+                <option value="提案中">📋 提案中</option>
+                <option value="情報収集">🔍 情報収集</option>
+                <option value="休眠">⏸ 休眠</option>
+              </select>
               <select id="my-heat-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
                 <option value="">全ステータス</option>
                 <option value="拡大">◎ 拡大見込み</option>
@@ -240,6 +247,15 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
           </div>
           <div class="form-group"><label class="label">月商</label><div class="unit-input"><input type="number" id="f-sales" placeholder="0" min="0"><span class="unit">万円</span></div></div>
           <div class="form-group"><label class="label">担当者名</label><input type="text" id="f-contact" placeholder="例: 山田 太郎（採用部長）"></div>
+          <div class="form-group">
+            <label class="label">契約ステータス<span class="required">*</span></label>
+            <div class="tag-group" id="status-tags" style="margin-top:2px">
+              <div class="tag-btn" onclick="toggleTag(this,'status-tags')" style="background:#EAF3DE;color:#3B6D11;border-color:#3B6D11">✅ 契約済み</div>
+              <div class="tag-btn" onclick="toggleTag(this,'status-tags')" style="background:#E6F1FB;color:#185FA5;border-color:#185FA5">📋 提案中</div>
+              <div class="tag-btn" onclick="toggleTag(this,'status-tags')" style="background:#FAEEDA;color:#854F0B;border-color:#854F0B">🔍 情報収集</div>
+              <div class="tag-btn" onclick="toggleTag(this,'status-tags')">⏸ 休眠</div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-car"></i> 配車割合</div></div>
@@ -518,6 +534,9 @@ function renderMyList(preFiltered){
     (salesName==='unassigned'?companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim())
     :companiesData.filter(c=>c['担当営業']===salesName));
 
+  // ステータスフィルター
+  const statusFilter=document.getElementById('my-status-filter')?.value||'';
+  if(statusFilter) filtered=filtered.filter(c=>(c['契約ステータス']||'').includes(statusFilter));
   // 温度感フィルター
   const heatFilter=document.getElementById('my-heat-filter')?.value||'';
   if(heatFilter) filtered=filtered.filter(c=>(c['温度感']||'').includes(heatFilter));
@@ -534,6 +553,7 @@ function renderMyList(preFiltered){
         <div style="font-size:13px;font-weight:500">${c['会社名']||'—'}</div>
         <div style="font-size:11px;color:#888780">${c['都道府県']||''} ${c['市区町村']||''} ${c['保有車両数']?'/ '+c['保有車両数']+'台':''}</div>
         <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">
+          ${statusBadge(c['契約ステータス'])}
           <span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span>
           ${c['次回アクション']?`<span style="font-size:11px;color:#888780">${c['次回アクション']} ${c['期日']?'/ '+c['期日']:''}</span>`:''}
         </div>
@@ -565,6 +585,15 @@ function renderPrefButtons(areaId){const a=AREAS[areaId];document.getElementById
 
 function clickPref(prefId){currentPref=prefId;const pName=ID_PREF[prefId];goScreen('pref');const sd=summaryData[pName]||{};document.getElementById('pref-list-title').textContent=(pName||prefId)+' の企業一覧（'+(sd['登録企業数']||0)+'社）';document.getElementById('pref-metrics').innerHTML=`<div class="metric"><div class="metric-label">平均採用単価（掲載）</div><div class="metric-value" style="font-size:15px">${sd['平均採用単価（掲載型）']?fmt(sd['平均採用単価（掲載型）']):'—'}</div></div><div class="metric"><div class="metric-label">平均採用単価（紹介）</div><div class="metric-value" style="font-size:15px">${sd['平均採用単価（紹介型）']?fmt(sd['平均採用単価（紹介型）']):'—'}</div></div><div class="metric"><div class="metric-label">年間採用目標（平均）</div><div class="metric-value">${sd['年間採用目標（平均）']?fmtN(sd['年間採用目標（平均）'])+'名':'—'}</div></div><div class="metric"><div class="metric-label">主要媒体</div><div class="metric-value" style="font-size:13px">${sd['主要利用媒体（最多）']||'—'}</div></div>`;const prefs=companiesData.filter(c=>c['都道府県']===pName);const list=document.getElementById('company-list');if(!prefs.length){list.innerHTML=`<div style="padding:24px;text-align:center;color:#888780;font-size:13px"><i class="ti ti-building-off" style="font-size:24px;display:block;margin-bottom:8px"></i>まだ企業データがありません<br><button class="btn btn-primary" style="margin-top:10px" onclick="startForm()">+ ヒアリング入力</button></div>`;return;}list.innerHTML=prefs.map((c,i)=>`<div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})"><div style="width:32px;height:32px;border-radius:7px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${c['会社名']||'—'}</div><div style="font-size:11px;color:#888780">${c['市区町村']||''} ${c['保有車両数']?'/ 車両'+c['保有車両数']+'台':''}</div><div style="margin-top:4px"><span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span></div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:13px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div><div style="font-size:11px;color:#888780">掲載単価</div></div><i class="ti ti-chevron-right" style="font-size:15px;color:#888780"></i></div>`).join('');}
 function heatClass(h){if(!h)return'b-gray';if(h.includes('拡大'))return'b-green';if(h.includes('安定'))return'b-blue';if(h.includes('フォロー'))return'b-amber';return'b-gray';}
+
+function statusBadge(s){
+  if(!s) return '<span class="badge b-gray">未設定</span>';
+  if(s.includes('契約済み')) return '<span class="badge" style="background:#EAF3DE;color:#3B6D11">✅ 契約済み</span>';
+  if(s.includes('提案中'))   return '<span class="badge" style="background:#E6F1FB;color:#185FA5">📋 提案中</span>';
+  if(s.includes('情報収集')) return '<span class="badge" style="background:#FAEEDA;color:#854F0B">🔍 情報収集</span>';
+  if(s.includes('休眠'))     return '<span class="badge b-gray">⏸ 休眠</span>';
+  return `<span class="badge b-gray">${s}</span>`;
+}
 function showCompany(idx){
   const c=companiesData[idx];if(!c)return;
   goScreen('company');
@@ -574,7 +603,7 @@ function showCompany(idx){
       <div style="flex:1">
         <div style="font-size:15px;font-weight:500;margin-bottom:3px">${c['会社名']||'—'}</div>
         <div style="font-size:12px;color:#888780">${c['都道府県']||''} ${c['市区町村']||''}</div>
-        <div style="margin-top:6px"><span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span></div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${statusBadge(c['契約ステータス'])}<span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span></div>
       </div>
       <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;flex-shrink:0" onclick="startEdit(${idx})">
         <i class="ti ti-edit"></i> 編集
@@ -671,6 +700,7 @@ function startEdit(idx){
     // タグ系
     setTag('age-tags', c['求める年齢層']);
     setTag('heat-tags', c['温度感']);
+    setTag('status-tags', c['契約ステータス']);
 
     // フォームタイトルを「編集」に変更
     document.getElementById('form-step-title').textContent='企業情報を編集';
@@ -723,6 +753,7 @@ async function submitForm(){
     companyName:name,pref,city:fVal('f-city'),
     cars:fVal('f-cars'),drivers:fVal('f-drivers'),sales:fVal('f-sales'),
     contact:fVal('f-contact'),haisha:haishaTxt,apps:getChecked('app-checks'),
+    contractStatus:getActiveTag('status-tags'),
     hiringTarget:fVal('f-target'),hiringMonthly:fVal('f-monthly'),
     hiringIssue:fVal('f-issue'),retention:fVal('f-retention'),
     shifts:getChecked('shift-checks'),ageGroup:getActiveTag('age-tags'),
