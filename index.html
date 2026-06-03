@@ -350,7 +350,6 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div class="card-body">
           <div class="form-group"><label class="label">掲載型 採用単価<span class="required">*</span></label><div class="unit-input"><input type="number" id="f-cost-ad" placeholder="0" min="0"><span class="unit">円</span></div></div>
           <div class="form-group"><label class="label">人材紹介 採用単価<span class="required">*</span></label><div class="unit-input"><input type="number" id="f-cost-ref" placeholder="0" min="0"><span class="unit">円</span></div></div>
-          <div class="form-group"><label class="label">人材紹介 手数料率</label><div class="unit-input"><input type="number" id="f-fee-rate" placeholder="30" min="0" max="100"><span class="unit">%</span></div></div>
         </div>
       </div>
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-news"></i> 利用媒体</div></div>
@@ -640,7 +639,6 @@ function showCompany(idx){
         <div class="card-body">
           <div class="info-row"><span class="info-label">掲載型単価</span><span class="info-val" style="color:#3B6D11">${fmt(c['掲載型採用単価'])}</span></div>
           <div class="info-row"><span class="info-label">紹介型単価</span><span class="info-val">${fmt(c['紹介型採用単価'])}</span></div>
-          <div class="info-row"><span class="info-label">紹介手数料率</span><span class="info-val">${c['紹介手数料率']||'—'} %</span></div>
           <div class="info-row"><span class="info-label">月額広告費</span><span class="info-val">${fmt(c['月額広告費'])}</span></div>
           <div class="info-row"><span class="info-label">年間採用目標</span><span class="info-val">${fmtN(c['年間採用目標'])} 名</span></div>
         </div>
