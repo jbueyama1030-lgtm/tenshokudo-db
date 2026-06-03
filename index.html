@@ -246,8 +246,26 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
             <div class="form-group"><label class="label">保有車両数</label><div class="unit-input"><input type="number" id="f-cars" placeholder="0" min="0"><span class="unit">台</span></div></div>
             <div class="form-group"><label class="label">ドライバー数</label><div class="unit-input"><input type="number" id="f-drivers" placeholder="0" min="0"><span class="unit">名</span></div></div>
           </div>
-          <div class="form-group"><label class="label">月商</label><div class="unit-input"><input type="number" id="f-sales" placeholder="0" min="0"><span class="unit">万円</span></div></div>
-          <div class="form-group"><label class="label">担当者名</label><input type="text" id="f-contact" placeholder="例: 山田 太郎（採用部長）"></div>
+          <div class="row2">
+            <div class="form-group"><label class="label">平均売上（ドライバー月当たり）</label><div class="unit-input"><input type="number" id="f-sales" placeholder="0" min="0"><span class="unit">万円</span></div></div>
+            <div class="form-group"><label class="label">トップドライバーの月売上</label><div class="unit-input"><input type="number" id="f-top-sales" placeholder="0" min="0"><span class="unit">万円</span></div></div>
+          </div>
+          <div class="form-group"><label class="label">担当者名（先方）</label><input type="text" id="f-contact" placeholder="例: 山田 太郎（採用部長）"></div>
+          <div class="form-group">
+            <label class="label">担当営業<span class="required">*</span></label>
+            <select id="f-sales-person">
+              <option value="">選択してください</option>
+              <option>羽尾</option>
+              <option>杉本</option>
+              <option>桐ヶ谷</option>
+              <option>石川</option>
+              <option>佐々木</option>
+              <option>平賀</option>
+              <option>小山田</option>
+              <option>菊池</option>
+              <option>清水</option>
+            </select>
+          </div>
           <div class="form-group">
             <label class="label">契約ステータス<span class="required">*</span></label>
             <div class="tag-group" id="status-tags" style="margin-top:2px">
@@ -375,10 +393,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-calendar-check"></i> 次回アクション</div></div>
         <div class="card-body">
           <div class="form-group"><label class="label">アクション内容</label><input type="text" id="f-action" placeholder="例: 効果レポート送付"></div>
-          <div class="row2">
-            <div class="form-group"><label class="label">期日</label><input type="date" id="f-due"></div>
-            <div class="form-group"><label class="label">担当営業</label><input type="text" id="f-sales" placeholder="例: 田中 一郎"></div>
-          </div>
+          <div class="form-group"><label class="label">期日</label><input type="date" id="f-due"></div>
         </div>
       </div>
       <div class="step-nav">
@@ -615,7 +630,8 @@ function showCompany(idx){
         <div class="card-body">
           <div class="info-row"><span class="info-label">保有車両数</span><span class="info-val">${fmtN(c['保有車両数'])} 台</span></div>
           <div class="info-row"><span class="info-label">ドライバー数</span><span class="info-val">${fmtN(c['ドライバー数'])} 名</span></div>
-          <div class="info-row"><span class="info-label">月商</span><span class="info-val">${fmtN(c['月商（万円）'])} 万円</span></div>
+          <div class="info-row"><span class="info-label">平均売上（月/人）</span><span class="info-val">${fmtN(c['平均売上（万円）'])} 万円</span></div>
+          <div class="info-row"><span class="info-label">トップ売上（月）</span><span class="info-val">${fmtN(c['トップ売上（万円）'])} 万円</span></div>
           <div class="info-row"><span class="info-label">配車割合</span><span class="info-val" style="font-size:12px">${c['配車割合']||'—'}</span></div>
           <div class="info-row"><span class="info-label">担当者</span><span class="info-val" style="font-size:12px">${c['担当者名']||'—'}</span></div>
         </div>
@@ -650,7 +666,13 @@ function showCompany(idx){
 function startEdit(idx){
   const c=companiesData[idx];if(!c)return;
   editingIdx=idx;
-  editingRowIndex=c._rowIndex;
+  editingRowIndex=c._rowIndex||null;
+  // _rowIndexが取れていない場合は警告
+  if(!editingRowIndex){
+    showToast('⚠ 行番号が取得できません。GASをv3に更新してください。');
+    console.warn('_rowIndex missing:', c);
+    return;
+  }
   formStep=1;
   resetForm();
   goScreen('form');
@@ -667,8 +689,10 @@ function startEdit(idx){
     setVal('f-city', c['市区町村']);
     setVal('f-cars', c['保有車両数']);
     setVal('f-drivers', c['ドライバー数']);
-    setVal('f-sales', c['月商（万円）']);
+    setVal('f-sales', c['平均売上（万円）']);
+    setVal('f-top-sales', c['トップ売上（万円）']);
     setVal('f-contact', c['担当者名']);
+    setVal('f-sales-person', c['担当営業']);
     setVal('f-target', c['年間採用目標']);
     setVal('f-monthly', c['月間採用実績']);
     setVal('f-issue', c['採用課題']);
@@ -682,7 +706,6 @@ function startEdit(idx){
     setVal('f-memo', c['商談メモ']);
     setVal('f-action', c['次回アクション']);
     setVal('f-due', c['期日']);
-    setVal('f-sales', c['担当営業']);
 
     // 配車割合
     if(c['配車割合']){
@@ -778,7 +801,8 @@ async function submitForm(){
   const haishaTxt=haishaItems.length?haishaItems.map(i=>i.name+' '+Math.round(i.pct||0)+'%').join(' / '):'';
   const params={
     companyName:name,pref,city:fVal('f-city'),
-    cars:fVal('f-cars'),drivers:fVal('f-drivers'),sales:fVal('f-sales'),
+    cars:fVal('f-cars'),drivers:fVal('f-drivers'),
+    sales:fVal('f-sales'),topSales:fVal('f-top-sales'),
     contact:fVal('f-contact'),haisha:haishaTxt,apps:getChecked('app-checks'),
     contractStatus:getActiveTag('status-tags'),
     hiringTarget:fVal('f-target'),hiringMonthly:fVal('f-monthly'),
@@ -788,7 +812,8 @@ async function submitForm(){
     feeRate:fVal('f-fee-rate'),media:getChecked('media-checks'),
     monthlyAd:fVal('f-monthly-ad'),pastMedia:fVal('f-past-media'),
     memo:fVal('f-memo'),heat:getActiveTag('heat-tags'),
-    nextAction:fVal('f-action'),dueDate:fVal('f-due'),salesPerson:fVal('f-sales'),
+    nextAction:fVal('f-action'),dueDate:fVal('f-due'),
+    salesPerson:fVal('f-sales-person'),
   };
   // 編集モードの場合はactionをupdateにしてrowIndexを付与
   if(editingRowIndex){
