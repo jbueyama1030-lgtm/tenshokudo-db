@@ -86,12 +86,54 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 .loader-wrap{position:fixed;inset:0;background:rgba(255,255,255,0.75);display:flex;align-items:center;justify-content:center;z-index:998}
 .spinner{width:32px;height:32px;border:3px solid #CECBF6;border-top-color:#534AB7;border-radius:50%;animation:spin 0.8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.sales-tabs{display:flex;gap:0;background:#fff;border-bottom:0.5px solid rgba(0,0,0,0.12);padding:0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.sales-tab{flex-shrink:0;padding:10px 16px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:#888780;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.sales-tabs{display:flex;gap:0;background:#fff;border-bottom:0.5px solid rgba(0,0,0,0.12);padding:0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.sales-tabs::-webkit-scrollbar{display:none}
+.sales-tab{flex-shrink:0;padding:10px 14px;font-size:13px;cursor:pointer;border-bottom:2px solid transparent;color:#888780;white-space:nowrap;display:flex;align-items:center;gap:6px}
 .sales-tab:hover{color:#533AB7}
 .sales-tab.active{color:#533AB7;border-bottom-color:#533AB7;font-weight:500}
 .sales-tab .cnt{font-size:11px;background:#F1EFE8;color:#5F5E5A;padding:1px 6px;border-radius:10px}
 .sales-tab.active .cnt{background:#EEEDFE;color:#3C3489}
+
+/* ===== スマホ対応 ===== */
+@media (max-width: 640px) {
+  .content{padding:10px 12px}
+  /* トップページ：地図とエリア一覧を縦積みに */
+  .home-layout{flex-direction:column!important}
+  .home-layout > div:first-child{width:100%!important}
+  .home-layout > div:last-child{width:100%!important}
+  /* エリア一覧をグリッドに */
+  #area-btn-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .area-btn{margin-bottom:0}
+  /* エリア拡大：縦積み */
+  .area-layout{flex-direction:column!important}
+  .area-layout > div:first-child{width:100%!important}
+  .area-layout > div:last-child{width:100%!important}
+  #pref-btn-list{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  /* メトリクス：2カラムに */
+  .pref-metrics-grid{grid-template-columns:1fr 1fr!important}
+  .my-metrics-grid{grid-template-columns:1fr 1fr!important}
+  /* 全国メトリクス */
+  #national-metrics{grid-template-columns:1fr 1fr!important;margin-top:8px}
+  .metric-label{font-size:10px}
+  .metric-value{font-size:15px}
+  /* ヘッダー */
+  .header{padding:10px 12px}
+  .logo-badge{display:none}
+  /* 地図カード */
+  .map-wrap{padding:8px}
+  /* フォーム */
+  .row2{grid-template-columns:1fr!important}
+  /* 企業一覧：右側の単価を小さく */
+  .company-row{padding:10px 10px}
+  /* マイページ：縦積み */
+  .mypage-layout{flex-direction:column!important}
+  .mypage-layout > div:last-child{width:100%!important;margin-top:12px}
+  /* inset */
+  .inset-box{width:18%}
+  /* step-nav */
+  .btn-next{font-size:13px;padding:12px}
+  .btn-back{font-size:13px;padding:12px}
+}
 </style>
 </head>
 <body>
@@ -117,9 +159,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <div class="content">
   <!-- 担当営業マイページ -->
   <div class="screen" id="screen-mypage">
-    <div style="display:flex;gap:14px;align-items:flex-start">
-      <div style="flex:1;min-width:0">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px" id="my-metrics"></div>
+    <div style="display:flex;gap:14px;align-items:flex-start" class="mypage-layout">
         <div class="card">
           <div class="card-head">
             <div class="card-title" id="my-list-title">担当企業一覧</div>
@@ -153,7 +193,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   </div>
 
   <div class="screen active" id="screen-home">
-    <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="display:flex;gap:14px;align-items:flex-start" class="home-layout">
       <div style="flex:1;min-width:0">
         <div class="map-wrap">
           <div style="font-size:12px;color:#888780;margin-bottom:6px">エリアをクリックして都道府県一覧へ</div>
@@ -180,7 +220,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   </div>
 
   <div class="screen" id="screen-area">
-    <div style="display:flex;gap:14px;align-items:flex-start">
+    <div style="display:flex;gap:14px;align-items:flex-start" class="area-layout">
       <div style="flex:1;min-width:0">
         <div class="map-wrap">
           <div style="font-size:12px;color:#888780;margin-bottom:6px">都道府県をクリックして企業一覧へ</div>
@@ -202,7 +242,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   </div>
 
   <div class="screen" id="screen-pref">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px" id="pref-metrics"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px" id="pref-metrics" class="pref-metrics-grid"></div>
     <div class="card">
       <div class="card-head">
         <div class="card-title" id="pref-list-title">企業一覧</div>
@@ -516,6 +556,7 @@ function renderMyPage(salesName){
     const d=new Date(c['期日']);return d>=now&&d<=week;
   }).length;
 
+  document.getElementById('my-metrics').className='my-metrics-grid';
   document.getElementById('my-metrics').innerHTML=`
     <div class="metric"><div class="metric-label">担当企業数</div><div class="metric-value">${filtered.length}社</div></div>
     <div class="metric"><div class="metric-label">平均採用単価（掲載）</div><div class="metric-value" style="font-size:15px">${avgTanka?fmt(avgTanka):'—'}</div></div>
