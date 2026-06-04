@@ -534,15 +534,22 @@ function renderSalesTabs(){
 
 function switchSalesTab(salesName, el){
   currentSalesTab=salesName;
-  // タブのactive切り替え
   document.querySelectorAll('.sales-tab').forEach(t=>t.classList.remove('active'));
   if(el) el.classList.add('active');
 
+  // ★ タブ切り替え時に検索・フィルター・ソートをリセット
+  const search=document.getElementById('my-search');
+  const statusF=document.getElementById('my-status-filter');
+  const heatF=document.getElementById('my-heat-filter');
+  const sortS=document.getElementById('my-sort');
+  if(search) search.value='';
+  if(statusF) statusF.value='';
+  if(heatF) heatF.value='';
+  if(sortS) sortS.value='default';
+
   if(salesName==='all'){
-    // 全員 → 地図トップへ
     goScreen('home');
   } else {
-    // 担当者ページへ
     goScreen('mypage');
     renderMyPage(salesName);
   }
@@ -596,7 +603,7 @@ function renderMyPage(salesName){
     }).join('')
     :'<div style="font-size:12px;color:#888780;padding:12px 0">アクション予定なし</div>';
 
-  renderMyList(filtered);
+  renderMyList();
 }
 
 function renderMyList(preFiltered){
