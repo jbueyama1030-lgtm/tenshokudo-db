@@ -163,26 +163,40 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div style="flex:1;min-width:0">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px" id="my-metrics" class="my-metrics-grid"></div>
         <div class="card">
-          <div class="card-head">
-            <div class="card-title" id="my-list-title">担当企業一覧</div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <select id="my-status-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
+          <div style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.08)">
+            <!-- 検索バー -->
+            <div style="position:relative;margin-bottom:8px">
+              <i class="ti ti-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px;color:#888780;pointer-events:none"></i>
+              <input type="text" id="my-search" placeholder="会社名で検索..." oninput="renderMyList()"
+                style="width:100%;font-size:13px;padding:8px 10px 8px 32px;border:0.5px solid rgba(0,0,0,0.15);border-radius:8px;background:#F1EFE8;color:#2C2C2A">
+            </div>
+            <!-- フィルター・ソート行 -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <select id="my-status-filter" onchange="renderMyList()" style="font-size:11px;padding:4px 6px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A;flex:1;min-width:80px">
                 <option value="">全ステータス</option>
                 <option value="契約済み">✅ 契約済み</option>
                 <option value="提案中">📋 提案中</option>
                 <option value="情報収集">🔍 情報収集</option>
                 <option value="休眠">⏸ 休眠</option>
               </select>
-              <select id="my-heat-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
+              <select id="my-heat-filter" onchange="renderMyList()" style="font-size:11px;padding:4px 6px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A;flex:1;min-width:80px">
                 <option value="">全温度感</option>
-                <option value="拡大">◎ 拡大見込み</option>
-                <option value="安定">○ 安定継続</option>
-                <option value="フォロー">△ 要フォロー</option>
-                <option value="リスク">× 解約リスク</option>
-                <option value="新規">新規検討中</option>
+                <option value="拡大">◎ 拡大</option>
+                <option value="安定">○ 安定</option>
+                <option value="フォロー">△ フォロー</option>
+                <option value="リスク">× リスク</option>
               </select>
-              <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="startForm()"><i class="ti ti-plus"></i> 企業追加</button>
+              <select id="my-sort" onchange="renderMyList()" style="font-size:11px;padding:4px 6px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A;flex:1;min-width:80px">
+                <option value="default">並び順</option>
+                <option value="due">期日順</option>
+                <option value="heat">温度感順</option>
+                <option value="tanka">採用単価順</option>
+                <option value="name">会社名順</option>
+              </select>
+              <button class="btn btn-primary" style="font-size:11px;padding:5px 10px;flex-shrink:0" onclick="startForm()"><i class="ti ti-plus"></i> 追加</button>
             </div>
+            <!-- 件数表示 -->
+            <div style="font-size:11px;color:#888780;margin-top:6px" id="my-list-count"></div>
           </div>
           <div id="my-company-list"></div>
         </div>
@@ -591,36 +605,75 @@ function renderMyList(preFiltered){
     (salesName==='unassigned'?companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim())
     :companiesData.filter(c=>c['担当営業']===salesName));
 
+  // 🔍 検索フィルター
+  const searchQ=(document.getElementById('my-search')?.value||'').trim().toLowerCase();
+  if(searchQ) filtered=filtered.filter(c=>(c['会社名']||'').toLowerCase().includes(searchQ)||(c['都道府県']||'').includes(searchQ)||(c['市区町村']||'').includes(searchQ));
+
   // ステータスフィルター
   const statusFilter=document.getElementById('my-status-filter')?.value||'';
   if(statusFilter) filtered=filtered.filter(c=>(c['契約ステータス']||'').includes(statusFilter));
+
   // 温度感フィルター
   const heatFilter=document.getElementById('my-heat-filter')?.value||'';
   if(heatFilter) filtered=filtered.filter(c=>(c['温度感']||'').includes(heatFilter));
+
+  // 🔃 ソート
+  const sortKey=document.getElementById('my-sort')?.value||'default';
+  const heatOrder={'拡大':0,'安定':1,'フォロー':2,'リスク':3,'新規':4};
+  if(sortKey==='due'){
+    filtered=filtered.sort((a,b)=>{
+      if(!a['期日'])return 1;if(!b['期日'])return -1;
+      return new Date(a['期日'])-new Date(b['期日']);
+    });
+  } else if(sortKey==='heat'){
+    filtered=filtered.sort((a,b)=>{
+      const ah=Object.keys(heatOrder).find(k=>(a['温度感']||'').includes(k));
+      const bh=Object.keys(heatOrder).find(k=>(b['温度感']||'').includes(k));
+      return (heatOrder[ah]??9)-(heatOrder[bh]??9);
+    });
+  } else if(sortKey==='tanka'){
+    filtered=filtered.sort((a,b)=>Number(b['掲載型採用単価']||0)-Number(a['掲載型採用単価']||0));
+  } else if(sortKey==='name'){
+    filtered=filtered.sort((a,b)=>(a['会社名']||'').localeCompare(b['会社名']||'','ja'));
+  }
+
+  // 件数表示
+  const countEl=document.getElementById('my-list-count');
+  if(countEl) countEl.textContent=filtered.length+'社表示'+(searchQ||statusFilter||heatFilter?' (絞り込み中)':'');
 
   const list=document.getElementById('my-company-list');
   if(!filtered.length){
     list.innerHTML='<div style="padding:24px;text-align:center;color:#888780;font-size:13px"><i class="ti ti-building-off" style="font-size:24px;display:block;margin-bottom:8px"></i>該当する企業がありません</div>';
     return;
   }
-  list.innerHTML=filtered.map(c=>`
-    <div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})">
-      <div style="width:32px;height:32px;border-radius:7px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:500">${c['会社名']||'—'}</div>
-        <div style="font-size:11px;color:#888780">${c['都道府県']||''} ${c['市区町村']||''} ${c['保有車両数']?'/ '+c['保有車両数']+'台':''}</div>
-        <div style="margin-top:4px;display:flex;gap:5px;flex-wrap:wrap">
+
+  // 📋 コンパクト1行表示
+  const now=new Date();const week=new Date(now.getTime()+7*24*60*60*1000);
+  list.innerHTML=filtered.map(c=>{
+    const d=c['期日']?new Date(c['期日']):null;
+    const isPast=d&&d<now;
+    const isUrgent=d&&d>=now&&d<=week;
+    const actionColor=isPast?'#A32D2D':isUrgent?'#854F0B':'#888780';
+    const actionIcon=isPast?'⚠':isUrgent?'⏰':'';
+    return `<div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})" style="padding:8px 14px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
+      <div style="flex:1;min-width:0;margin-left:2px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${c['会社名']||'—'}</span>
           ${statusBadge(c['契約ステータス'])}
-          <span class="badge ${heatClass(c['温度感'])}">${c['温度感']||'—'}</span>
-          ${c['次回アクション']?`<span style="font-size:11px;color:#888780">${c['次回アクション']} ${c['期日']?'/ '+c['期日']:''}</span>`:''}
+          <span class="badge ${heatClass(c['温度感'])}" style="font-size:10px">${(c['温度感']||'').replace('見込み','').replace('継続','').replace('フォロー','フォロー').replace('リスク','リスク')}</span>
+        </div>
+        <div style="font-size:11px;color:#888780;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
+          <span>${c['都道府県']||''} ${c['市区町村']||''}</span>
+          ${c['次回アクション']?`<span style="color:${actionColor}">${actionIcon} ${c['次回アクション']}${c['期日']?' ('+c['期日']+')':''}</span>`:''}
         </div>
       </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:13px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div>
-        <div style="font-size:11px;color:#888780">${c['都道府県']||''}</div>
+      <div style="text-align:right;flex-shrink:0;margin-left:8px">
+        <div style="font-size:12px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div>
       </div>
-      <i class="ti ti-chevron-right" style="font-size:15px;color:#888780"></i>
-    </div>`).join('');
+      <i class="ti ti-chevron-right" style="font-size:14px;color:#888780;flex-shrink:0"></i>
+    </div>`;
+  }).join('');
 }
 
 async function gasGet(params){const url=GAS_URL+'?'+new URLSearchParams(params).toString();const r=await fetch(url);return r.json();}
