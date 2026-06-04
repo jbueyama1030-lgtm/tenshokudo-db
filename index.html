@@ -160,10 +160,12 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   <!-- 担当営業マイページ -->
   <div class="screen" id="screen-mypage">
     <div style="display:flex;gap:14px;align-items:flex-start" class="mypage-layout">
+      <div style="flex:1;min-width:0">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px" id="my-metrics" class="my-metrics-grid"></div>
         <div class="card">
           <div class="card-head">
             <div class="card-title" id="my-list-title">担当企業一覧</div>
-            <div style="display:flex;align-items:center;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <select id="my-status-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
                 <option value="">全ステータス</option>
                 <option value="契約済み">✅ 契約済み</option>
@@ -172,7 +174,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
                 <option value="休眠">⏸ 休眠</option>
               </select>
               <select id="my-heat-filter" onchange="renderMyList()" style="font-size:12px;padding:4px 8px;border:0.5px solid rgba(0,0,0,0.15);border-radius:6px;background:#fff;color:#2C2C2A">
-                <option value="">全ステータス</option>
+                <option value="">全温度感</option>
                 <option value="拡大">◎ 拡大見込み</option>
                 <option value="安定">○ 安定継続</option>
                 <option value="フォロー">△ 要フォロー</option>
@@ -556,7 +558,6 @@ function renderMyPage(salesName){
     const d=new Date(c['期日']);return d>=now&&d<=week;
   }).length;
 
-  document.getElementById('my-metrics').className='my-metrics-grid';
   document.getElementById('my-metrics').innerHTML=`
     <div class="metric"><div class="metric-label">担当企業数</div><div class="metric-value">${filtered.length}社</div></div>
     <div class="metric"><div class="metric-label">平均採用単価（掲載）</div><div class="metric-value" style="font-size:15px">${avgTanka?fmt(avgTanka):'—'}</div></div>
