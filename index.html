@@ -556,7 +556,9 @@ function switchSalesTab(salesName, el){
 }
 
 function renderMyPage(salesName){
-  // 対象企業を絞り込み
+  // currentSalesTabを確実にセット
+  currentSalesTab=salesName;
+
   let filtered;
   if(salesName==='unassigned'){
     filtered=companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim());
@@ -564,33 +566,27 @@ function renderMyPage(salesName){
     filtered=companiesData.filter(c=>c['担当営業']===salesName);
   }
 
-  const label=salesName==='unassigned'?'未割当':salesName;
-  document.getElementById('my-list-title').textContent=label+' の担当企業（'+filtered.length+'社）';
-
   // メトリクス
   const tankas=filtered.map(c=>Number(c['掲載型採用単価']||0)).filter(v=>v>0);
   const avgTanka=tankas.length?Math.round(tankas.reduce((a,b)=>a+b,0)/tankas.length):null;
   const hot=filtered.filter(c=>(c['温度感']||'').includes('拡大')).length;
   const followUp=filtered.filter(c=>(c['温度感']||'').includes('フォロー')||(c['温度感']||'').includes('リスク')).length;
-  // 期日が今日〜1週間以内のアクション数
   const now=new Date(); const week=new Date(now.getTime()+7*24*60*60*1000);
-  const urgentActions=filtered.filter(c=>{
-    if(!c['期日'])return false;
-    const d=new Date(c['期日']);return d>=now&&d<=week;
-  }).length;
 
-  document.getElementById('my-metrics').innerHTML=`
+  const metricsEl=document.getElementById('my-metrics');
+  if(metricsEl) metricsEl.innerHTML=`
     <div class="metric"><div class="metric-label">担当企業数</div><div class="metric-value">${filtered.length}社</div></div>
     <div class="metric"><div class="metric-label">平均採用単価（掲載）</div><div class="metric-value" style="font-size:15px">${avgTanka?fmt(avgTanka):'—'}</div></div>
     <div class="metric"><div class="metric-label" style="color:#3B6D11">◎ 拡大見込み</div><div class="metric-value" style="color:#3B6D11">${hot}社</div></div>
-    <div class="metric"><div class="metric-label" style="color:#854F0B">要対応（フォロー・リスク）</div><div class="metric-value" style="color:#854F0B">${followUp}社</div></div>`;
+    <div class="metric"><div class="metric-label" style="color:#854F0B">要対応</div><div class="metric-value" style="color:#854F0B">${followUp}社</div></div>`;
 
-  // 次回アクション一覧（右サイドバー）
+  // 次回アクション一覧
   const withAction=filtered.filter(c=>c['次回アクション']).sort((a,b)=>{
     if(!a['期日'])return 1; if(!b['期日'])return -1;
     return new Date(a['期日'])-new Date(b['期日']);
   });
-  document.getElementById('my-actions').innerHTML=withAction.length?
+  const actionsEl=document.getElementById('my-actions');
+  if(actionsEl) actionsEl.innerHTML=withAction.length?
     withAction.map(c=>{
       const d=c['期日']?new Date(c['期日']):null;
       const isUrgent=d&&d<=week&&d>=now;
@@ -603,14 +599,20 @@ function renderMyPage(salesName){
     }).join('')
     :'<div style="font-size:12px;color:#888780;padding:12px 0">アクション予定なし</div>';
 
+  // 企業一覧を描画
   renderMyList();
 }
 
-function renderMyList(preFiltered){
+function renderMyList(){
   const salesName=currentSalesTab;
-  let filtered=preFiltered||
-    (salesName==='unassigned'?companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim())
-    :companiesData.filter(c=>c['担当営業']===salesName));
+  let filtered;
+  if(salesName==='unassigned'){
+    filtered=companiesData.filter(c=>!c['担当営業']||!c['担当営業'].trim());
+  } else if(salesName==='all'){
+    filtered=[...companiesData];
+  } else {
+    filtered=companiesData.filter(c=>c['担当営業']===salesName);
+  }
 
   // 🔍 検索フィルター
   const searchQ=(document.getElementById('my-search')?.value||'').trim().toLowerCase();
