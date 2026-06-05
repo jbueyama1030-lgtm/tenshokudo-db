@@ -383,11 +383,11 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div class="card-body">
           <div class="form-group"><label class="label">求める年齢層</label>
             <div class="tag-group" id="age-tags">
-              <div class="tag-btn" onclick="toggleTag(this,'age-tags')">20代歓迎</div>
-              <div class="tag-btn" onclick="toggleTag(this,'age-tags')">30代中心</div>
-              <div class="tag-btn" onclick="toggleTag(this,'age-tags')">40代歓迎</div>
-              <div class="tag-btn" onclick="toggleTag(this,'age-tags')">50代以上OK</div>
-              <div class="tag-btn" onclick="toggleTag(this,'age-tags')">年齢不問</div>
+              <div class="tag-btn" onclick="toggleMultiTag(this)">20代歓迎</div>
+              <div class="tag-btn" onclick="toggleMultiTag(this)">30代中心</div>
+              <div class="tag-btn" onclick="toggleMultiTag(this)">40代歓迎</div>
+              <div class="tag-btn" onclick="toggleMultiTag(this)">50代以上OK</div>
+              <div class="tag-btn" onclick="toggleMultiTag(this)">年齢不問</div>
             </div>
           </div>
           <div class="form-group"><label class="label">二種免許取得支援</label>
@@ -824,7 +824,13 @@ function startEdit(idx){
     setChecks('media-checks', c['利用媒体']);
 
     // タグ系
-    setTag('age-tags', c['求める年齢層']);
+    // 年齢層（複数選択対応）
+    if(c['求める年齢層']){
+      const ages=c['求める年齢層'].split('・');
+      document.querySelectorAll('#age-tags .tag-btn').forEach(btn=>{
+        if(ages.includes(btn.textContent)) btn.classList.add('active');
+      });
+    }
     setTag('heat-tags', c['温度感']);
     setTag('status-tags', c['契約ステータス']);
 
@@ -893,8 +899,10 @@ function removeHaisha(idx){haishaItems.splice(idx,1);renderHaisha();}
 function quickAdd(name){if(haishaItems.find(i=>i.name===name))return;haishaItems.push({name,pct:0});renderHaisha();}
 function toggleCheck(item){item.classList.toggle('selected');const cb=item.querySelector('input[type=checkbox]');if(cb)cb.checked=!cb.checked;}
 function toggleTag(btn,gid){document.querySelectorAll('#'+gid+' .tag-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');}
+function toggleMultiTag(btn){btn.classList.toggle('active');}
 function getChecked(id){return[...document.querySelectorAll('#'+id+' .check-item.selected')].map(el=>el.querySelector('input').value).join('・')||'';}
 function getActiveTag(id){const el=document.querySelector('#'+id+' .tag-btn.active');return el?el.textContent:'';}
+function getMultiTag(id){return[...document.querySelectorAll('#'+id+' .tag-btn.active')].map(b=>b.textContent).join('・')||'';}
 function fVal(id){return(document.getElementById(id)||{}).value||'';}
 
 async function submitForm(){
@@ -909,7 +917,7 @@ async function submitForm(){
     contractStatus:getActiveTag('status-tags'),
     hiringTarget:fVal('f-target'),hiringMonthly:fVal('f-monthly'),
     hiringIssue:fVal('f-issue'),retention:fVal('f-retention'),
-    shifts:getChecked('shift-checks'),ageGroup:getActiveTag('age-tags'),
+    shifts:getChecked('shift-checks'),ageGroup:getMultiTag('age-tags'),
     license:fVal('f-license'),costAd:fVal('f-cost-ad'),costRef:fVal('f-cost-ref'),
     feeRate:fVal('f-fee-rate'),media:getChecked('media-checks'),
     monthlyAd:fVal('f-monthly-ad'),pastMedia:fVal('f-past-media'),
