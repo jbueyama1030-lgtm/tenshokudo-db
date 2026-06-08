@@ -1090,6 +1090,8 @@ function handleContractFile(file){
       });
 
     renderContractPreview();
+    // 応募CSVが先に読み込まれていた場合は自動でマッチング実行
+    if(appRows.length>0) runMatching();
   };
   reader.readAsText(file,'UTF-8');
 }
@@ -1158,8 +1160,13 @@ function handleCsvFile(file){
     appRows=parseCSV(e.target.result).filter(r=>r['企業ID']&&r['ステータス']);
     document.getElementById('app-file-label').textContent='✅ '+appRows.length+'件の応募データを読み込みました';
     document.getElementById('csv-drop-zone').style.borderColor='#534AB7';
-    if(Object.keys(contractMap).length>0) runMatching();
-    else showToast('先に①契約企業CSVを選択してください');
+    // contractMapがセット済みなら即マッチング、未選択ならトースト
+    if(Object.keys(contractMap).length>0){
+      runMatching();
+    } else {
+      // トーストは出さず、契約企業CSVを選んだときに自動でマッチングが走る
+      document.getElementById('csv-preview').style.display='none';
+    }
   };
   reader.readAsText(file,'UTF-8');
 }
