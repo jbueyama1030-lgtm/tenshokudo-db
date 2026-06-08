@@ -1080,6 +1080,7 @@ function handleContractFile(file){
   const reader=new FileReader();
   reader.onload=e=>{
     const rows=parseCSV(e.target.result);
+    showToast('CSVパース完了: '+rows.length+'行');  // デバッグ用
     // contractMapにも保存（応募取込用）
     contractMap={};
     rows.forEach(r=>{if(r['企業ID'])contractMap[r['企業ID']]=r;});
@@ -1089,12 +1090,14 @@ function handleContractFile(file){
 
     // DBに登録済みの企業名セット
     const registeredNames=new Set(companiesData.map(c=>c['会社名']||''));
+    showToast('DB登録済み: '+registeredNames.size+'社'); // デバッグ用
     newCompanies=rows
       .filter(r=>!r['契約終了日'])
       .filter(r=>{
         const base=r['企業名'].split('(')[0].trim();
         return !registeredNames.has(r['企業名'])&&!registeredNames.has(base);
       });
+    showToast('未登録企業: '+newCompanies.length+'社'); // デバッグ用
 
     const preview=document.getElementById('contract-preview');
     const summary=document.getElementById('contract-summary');
