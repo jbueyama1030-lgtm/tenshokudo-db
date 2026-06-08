@@ -141,10 +141,39 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <div class="toast" id="toast"></div>
 <div class="loader-wrap" id="loader" style="display:none"><div class="spinner"></div></div>
 
+<!-- CSVインポートモーダル -->
+<div id="csv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;overflow-y:auto">
+  <div style="background:#fff;max-width:640px;margin:24px auto;border-radius:12px;overflow:hidden">
+    <div style="padding:16px;border-bottom:0.5px solid rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:15px;font-weight:500">📂 CSVインポート</div>
+      <button onclick="closeCsvModal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#888780">×</button>
+    </div>
+    <div style="padding:16px">
+      <!-- ファイル選択 -->
+      <div id="csv-drop-zone" style="border:2px dashed rgba(0,0,0,0.2);border-radius:8px;padding:32px;text-align:center;cursor:pointer;margin-bottom:16px;background:#F1EFE8" onclick="document.getElementById('csv-file-input').click()">
+        <i class="ti ti-file-text" style="font-size:32px;color:#888780;display:block;margin-bottom:8px"></i>
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px">CSVファイルをクリックして選択</div>
+        <div style="font-size:12px;color:#888780">応募データCSV（UTF-8）対応</div>
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
+      </div>
+      <!-- プレビュー -->
+      <div id="csv-preview" style="display:none">
+        <div style="font-size:13px;font-weight:500;margin-bottom:8px" id="csv-summary"></div>
+        <div style="max-height:360px;overflow-y:auto;border:0.5px solid rgba(0,0,0,0.12);border-radius:8px" id="csv-preview-list"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn" onclick="closeCsvModal()">キャンセル</button>
+          <button class="btn btn-primary" onclick="applyCSVImport()" id="csv-apply-btn"><i class="ti ti-check"></i> Sheetsに反映</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="header">
   <div class="logo">転職道 <span class="logo-badge">営業DB</span></div>
   <div style="display:flex;gap:8px">
     <button class="btn" onclick="goScreen('home')" id="btn-top" style="display:none"><i class="ti ti-map"></i> 地図</button>
+    <button class="btn" onclick="openCsvModal()" style="font-size:12px"><i class="ti ti-file-import"></i> CSV取込</button>
     <button class="btn btn-primary" onclick="startForm()"><i class="ti ti-plus"></i> ヒアリング入力</button>
   </div>
 </div>
@@ -406,6 +435,11 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div class="card-body">
           <div class="form-group"><label class="label">掲載型 採用単価<span class="required">*</span></label><div class="unit-input"><input type="number" id="f-cost-ad" placeholder="0" min="0"><span class="unit">円</span></div></div>
           <div class="form-group"><label class="label">人材紹介 採用単価<span class="required">*</span></label><div class="unit-input"><input type="number" id="f-cost-ref" placeholder="0" min="0"><span class="unit">円</span></div></div>
+          <div style="height:0.5px;background:rgba(0,0,0,0.08);margin:4px 0 12px"></div>
+          <div class="row2">
+            <div class="form-group"><label class="label">転職道経由 応募数</label><div class="unit-input"><input type="number" id="f-apply-count" placeholder="0" min="0"><span class="unit">件</span></div></div>
+            <div class="form-group"><label class="label">転職道経由 入社数</label><div class="unit-input"><input type="number" id="f-hire-count" placeholder="0" min="0"><span class="unit">名</span></div></div>
+          </div>
         </div>
       </div>
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-news"></i> 利用媒体</div></div>
@@ -919,6 +953,7 @@ async function submitForm(){
     hiringIssue:fVal('f-issue'),retention:fVal('f-retention'),
     shifts:getChecked('shift-checks'),ageGroup:getMultiTag('age-tags'),
     license:fVal('f-license'),costAd:fVal('f-cost-ad'),costRef:fVal('f-cost-ref'),
+    applyCount:fVal('f-apply-count'),hireCount:fVal('f-hire-count'),
     feeRate:fVal('f-fee-rate'),media:getChecked('media-checks'),
     monthlyAd:fVal('f-monthly-ad'),pastMedia:fVal('f-past-media'),
     memo:fVal('f-memo'),heat:getActiveTag('heat-tags'),
@@ -950,6 +985,129 @@ async function submitForm(){
 function resetForm(){haishaItems=[];document.querySelectorAll('#screen-form input:not([type=checkbox]),#screen-form select,#screen-form textarea').forEach(el=>el.value='');document.querySelectorAll('#screen-form .check-item.selected').forEach(el=>el.classList.remove('selected'));document.querySelectorAll('#screen-form input[type=checkbox]').forEach(el=>el.checked=false);document.querySelectorAll('#screen-form .tag-btn.active').forEach(el=>el.classList.remove('active'));renderHaisha();}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function showLoader(show){document.getElementById('loader').style.display=show?'flex':'none';}
+
+// =====================================================
+// CSVインポート
+// =====================================================
+let csvImportData = []; // マッチング結果を保持
+
+function openCsvModal(){
+  document.getElementById('csv-modal').style.display='block';
+  document.getElementById('csv-preview').style.display='none';
+  document.getElementById('csv-file-input').value='';
+}
+function closeCsvModal(){
+  document.getElementById('csv-modal').style.display='none';
+  csvImportData=[];
+}
+
+function handleCsvFile(file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const text=e.target.result;
+    parseAndMatch(text);
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+// BOM除去
+function removeBOM(str){return str.charCodeAt(0)===0xFEFF?str.slice(1):str;}
+
+function parseAndMatch(text){
+  text=removeBOM(text);
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const headers=lines[0].split(',').map(h=>h.trim());
+  const rows=lines.slice(1).map(line=>{
+    // カンマ区切り（ダブルクォート対応）
+    const vals=[];let cur='',inQ=false;
+    for(const ch of line){
+      if(ch==='"'){inQ=!inQ;}
+      else if(ch===','&&!inQ){vals.push(cur);cur='';}
+      else cur+=ch;
+    }
+    vals.push(cur);
+    const obj={};
+    headers.forEach((h,i)=>obj[h]=vals[i]||'');
+    return obj;
+  }).filter(r=>r['応募先企業']);
+
+  // DBの企業とマッチング
+  const results=[];
+  companiesData.forEach(company=>{
+    const dbName=company['会社名']||'';
+    if(!dbName) return;
+    // 部分一致でマッチ
+    const matched=rows.filter(r=>{
+      const csvName=r['応募先企業']||'';
+      return csvName.includes(dbName)||dbName.includes(csvName.split('(')[0].trim());
+    });
+    if(matched.length===0) return;
+    const applyCount=matched.length;
+    const hireCount=matched.filter(r=>r['ステータス']==='入社').length;
+    results.push({
+      company,
+      dbName,
+      applyCount,
+      hireCount,
+      rowIndex:company._rowIndex,
+      matchedNames:[...new Set(matched.map(r=>r['応募先企業']))].slice(0,2),
+    });
+  });
+
+  csvImportData=results;
+  renderCsvPreview(results, rows.length);
+}
+
+function renderCsvPreview(results, totalRows){
+  const preview=document.getElementById('csv-preview');
+  const summary=document.getElementById('csv-summary');
+  const list=document.getElementById('csv-preview-list');
+  preview.style.display='block';
+
+  summary.innerHTML=`CSVから <strong>${totalRows.toLocaleString()}件</strong> の応募データを読み込みました。<strong>${results.length}社</strong> とマッチしました。`;
+
+  if(!results.length){
+    list.innerHTML='<div style="padding:16px;text-align:center;color:#888780">マッチする企業が見つかりませんでした</div>';
+    return;
+  }
+
+  list.innerHTML=results.map(r=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.08)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500">${r.dbName}</div>
+        <div style="font-size:11px;color:#888780;margin-top:2px">${r.matchedNames.join('、')}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;font-weight:500;color:#534AB7">応募 ${r.applyCount}件</div>
+        <div style="font-size:12px;color:#1D9E75;font-weight:500">入社 ${r.hireCount}名</div>
+      </div>
+    </div>`).join('');
+}
+
+async function applyCSVImport(){
+  if(!csvImportData.length){showToast('インポートするデータがありません');return;}
+  showLoader(true);
+  document.getElementById('csv-apply-btn').disabled=true;
+  let success=0,fail=0;
+  for(const r of csvImportData){
+    try{
+      const params={
+        action:'updateApply',
+        rowIndex:r.rowIndex,
+        applyCount:r.applyCount,
+        hireCount:r.hireCount,
+      };
+      const j=await gasGet(params);
+      if(j.ok) success++; else fail++;
+    }catch(e){fail++;}
+  }
+  showLoader(false);
+  document.getElementById('csv-apply-btn').disabled=false;
+  closeCsvModal();
+  showToast(`✓ ${success}社を更新しました${fail?'（'+fail+'社失敗）':''}`);
+  await loadData();
+}
 
 renderBreadcrumb('home');
 d3.json('https://unpkg.com/jpn-atlas@1/japan/japan.json').then(japan=>{allFeatures=topojson.feature(japan,japan.objects.prefectures).features;loadData();}).catch(()=>showToast('地図データの読み込みに失敗しました'));
