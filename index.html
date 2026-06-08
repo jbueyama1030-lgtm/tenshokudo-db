@@ -720,6 +720,7 @@ function renderMyList(){
   }
 
   // 契約中 / アプローチ中 でグループ分け
+  const now=new Date();const week=new Date(now.getTime()+7*24*60*60*1000);
   const contracted=filtered.filter(c=>(c['契約ステータス']||'').includes('契約済み'));
   const approaching=filtered.filter(c=>!(c['契約ステータス']||'').includes('契約済み'));
 
