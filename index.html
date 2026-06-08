@@ -1090,8 +1090,9 @@ function handleContractFile(file){
     console.log('DB登録済み:', registeredNames.size, '社');
     newCompanies=rows
       .filter(r=>!r['契約終了日'].trim())
+      .filter(r=>r['企業名']&&r['企業名'].trim()) // 企業名が空の行を除外
       .filter(r=>{
-        const base=r['企業名'].split('(')[0].trim();
+        const base=(r['企業名']||'').split('(')[0].trim();
         return !registeredNames.has(r['企業名'])&&!registeredNames.has(base);
       });
     console.log('未登録企業:', newCompanies.length, '社');
