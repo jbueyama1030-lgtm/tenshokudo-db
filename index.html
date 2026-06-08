@@ -145,64 +145,74 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
 <div id="csv-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;overflow-y:auto">
   <div style="background:#fff;max-width:660px;margin:24px auto;border-radius:12px;overflow:hidden">
     <div style="padding:16px;border-bottom:0.5px solid rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:15px;font-weight:500">📂 CSVインポート</div>
+      <div style="font-size:15px;font-weight:500">🏢 契約企業CSV 一括登録</div>
       <button onclick="closeCsvModal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#888780">×</button>
     </div>
     <div style="padding:16px">
-
-      <!-- STEP1: 契約企業CSV -->
-      <div style="margin-bottom:10px">
-        <div style="font-size:12px;font-weight:500;color:#533AB7;margin-bottom:5px">① 契約企業CSVを選択 → 未登録企業を一括登録</div>
-        <div id="contract-drop-zone" style="border:2px dashed rgba(0,0,0,0.15);border-radius:8px;padding:13px 16px;cursor:pointer;background:#F1EFE8;display:flex;align-items:center;gap:10px" onclick="document.getElementById('contract-file-input').click()">
-          <i class="ti ti-building" style="font-size:20px;color:#888780;flex-shrink:0"></i>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:500" id="contract-file-label">契約企業CSVを選択...</div>
-            <div style="font-size:11px;color:#888780">企業ID・企業名・エリア・プラン・年間掲載費・契約開始日・終了日</div>
-          </div>
-          <input type="file" id="contract-file-input" accept=".csv" style="display:none" onchange="handleContractFile(this.files[0])">
+      <div style="font-size:12px;color:#888780;margin-bottom:12px">契約企業CSVを選択すると、未登録の企業を自動検出して一括登録します。</div>
+      <div id="contract-drop-zone" style="border:2px dashed rgba(0,0,0,0.15);border-radius:8px;padding:20px;cursor:pointer;background:#F1EFE8;display:flex;align-items:center;gap:12px" onclick="document.getElementById('contract-file-input').click()">
+        <i class="ti ti-building" style="font-size:28px;color:#888780;flex-shrink:0"></i>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500" id="contract-file-label">契約企業CSVを選択...</div>
+          <div style="font-size:11px;color:#888780;margin-top:2px">企業ID・企業名・エリア・プラン・年間掲載費・契約開始日・終了日</div>
         </div>
-        <!-- 登録プレビュー -->
-        <div id="contract-preview" style="display:none;margin-top:8px">
-          <div style="font-size:12px;color:#888780;margin-bottom:4px" id="contract-summary"></div>
-          <div style="max-height:140px;overflow-y:auto;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px" id="contract-preview-list"></div>
-          <button class="btn btn-primary" style="margin-top:8px;width:100%" onclick="applyContractImport()" id="contract-apply-btn">
-            <i class="ti ti-building-plus"></i> 未登録企業をSheetsに一括登録
-          </button>
-        </div>
+        <input type="file" id="contract-file-input" accept=".csv" style="display:none" onchange="handleContractFile(this.files[0])">
       </div>
-
-      <div style="height:0.5px;background:rgba(0,0,0,0.08);margin:12px 0"></div>
-
-      <!-- STEP2: 応募CSV -->
-      <div style="margin-bottom:10px">
-        <div style="font-size:12px;font-weight:500;color:#533AB7;margin-bottom:5px">② 応募データCSVを選択 → 担当営業・応募数・入社数を更新</div>
-        <div id="csv-drop-zone" style="border:2px dashed rgba(0,0,0,0.15);border-radius:8px;padding:13px 16px;cursor:pointer;background:#F1EFE8;display:flex;align-items:center;gap:10px" onclick="document.getElementById('csv-file-input').click()">
-          <i class="ti ti-file-text" style="font-size:20px;color:#888780;flex-shrink:0"></i>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:500" id="app-file-label">応募データCSVを選択...</div>
-            <div style="font-size:11px;color:#888780">企業ID・ステータス・営業担当が含まれるCSV</div>
-          </div>
-          <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
-        </div>
-        <!-- 応募マッチングプレビュー -->
-        <div id="csv-preview" style="display:none;margin-top:8px">
-          <div style="font-size:12px;color:#888780;margin-bottom:4px" id="csv-summary"></div>
-          <div style="max-height:200px;overflow-y:auto;border:0.5px solid rgba(0,0,0,0.1);border-radius:6px" id="csv-preview-list"></div>
-          <button class="btn btn-primary" style="margin-top:8px;width:100%;background:#1D9E75" onclick="applyCSVImport()" id="csv-apply-btn">
-            <i class="ti ti-check"></i> 担当営業・応募数・入社数をSheetsに反映
-          </button>
-        </div>
+      <div id="contract-preview" style="display:none;margin-top:12px">
+        <div style="font-size:12px;font-weight:500;margin-bottom:6px" id="contract-summary"></div>
+        <div style="max-height:300px;overflow-y:auto;border:0.5px solid rgba(0,0,0,0.1);border-radius:8px" id="contract-preview-list"></div>
+        <button class="btn btn-primary" style="margin-top:10px;width:100%" onclick="applyContractImport()" id="contract-apply-btn">
+          <i class="ti ti-building-plus"></i> 未登録企業をSheetsに一括登録
+        </button>
       </div>
-
     </div>
   </div>
 </div>
 
+<!-- 応募CSVモーダル -->
+<div id="app-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;overflow-y:auto">
+  <div style="background:#fff;max-width:660px;margin:24px auto;border-radius:12px;overflow:hidden">
+    <div style="padding:16px;border-bottom:0.5px solid rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:15px;font-weight:500">📊 応募データCSV 取込</div>
+      <button onclick="closeAppModal()" style="background:none;border:none;cursor:pointer;font-size:20px;color:#888780">×</button>
+    </div>
+    <div style="padding:16px">
+      <div style="font-size:12px;color:#888780;margin-bottom:12px">①契約企業CSV → ②応募データCSVの順に選択してください。企業IDで突合し、担当営業・応募数・入社数を更新します。</div>
+      <!-- 契約企業CSV -->
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:600;color:#533AB7;margin-bottom:4px">① 契約企業CSV</div>
+        <div style="border:1.5px solid rgba(0,0,0,0.12);border-radius:8px;padding:12px;cursor:pointer;background:#F1EFE8;display:flex;align-items:center;gap:10px" onclick="document.getElementById('contract-file-input2').click()">
+          <i class="ti ti-building" style="font-size:18px;color:#888780;flex-shrink:0"></i>
+          <div style="flex:1;font-size:13px;font-weight:500" id="contract-file-label2">CSVを選択...</div>
+          <input type="file" id="contract-file-input2" accept=".csv" style="display:none" onchange="handleContractFile2(this.files[0])">
+        </div>
+      </div>
+      <!-- 応募CSV -->
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;font-weight:600;color:#533AB7;margin-bottom:4px">② 応募データCSV</div>
+        <div style="border:1.5px solid rgba(0,0,0,0.12);border-radius:8px;padding:12px;cursor:pointer;background:#F1EFE8;display:flex;align-items:center;gap:10px" onclick="document.getElementById('csv-file-input').click()">
+          <i class="ti ti-file-text" style="font-size:18px;color:#888780;flex-shrink:0"></i>
+          <div style="flex:1;font-size:13px;font-weight:500" id="app-file-label">CSVを選択...</div>
+          <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
+        </div>
+      </div>
+      <!-- プレビュー -->
+      <div id="csv-preview" style="display:none;margin-top:8px">
+        <div style="font-size:12px;font-weight:500;margin-bottom:6px" id="csv-summary"></div>
+        <div style="max-height:240px;overflow-y:auto;border:0.5px solid rgba(0,0,0,0.1);border-radius:8px" id="csv-preview-list"></div>
+        <button class="btn btn-primary" style="margin-top:10px;width:100%;background:#1D9E75" onclick="applyCSVImport()" id="csv-apply-btn">
+          <i class="ti ti-check"></i> 担当営業・応募数・入社数をSheetsに反映
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="header">
   <div class="logo">転職道 <span class="logo-badge">営業DB</span></div>
   <div style="display:flex;gap:8px">
     <button class="btn" onclick="goScreen('home')" id="btn-top" style="display:none"><i class="ti ti-map"></i> 地図</button>
-    <button class="btn" onclick="openCsvModal()" style="font-size:12px"><i class="ti ti-file-import"></i> CSV取込</button>
+    <button class="btn" onclick="openCsvModal()" style="font-size:12px"><i class="ti ti-building-plus"></i> 企業登録</button>
+    <button class="btn" onclick="openAppModal()" style="font-size:12px"><i class="ti ti-chart-bar"></i> 応募取込</button>
     <button class="btn btn-primary" onclick="startForm()"><i class="ti ti-plus"></i> ヒアリング入力</button>
   </div>
 </div>
@@ -1025,29 +1035,26 @@ function showLoader(show){document.getElementById('loader').style.display=show?'
 
 // =====================================================
 
+
 // =====================================================
-// CSVインポート（企業IDベース・2段階フロー）
+// CSVインポート（契約企業登録 / 応募データ取込 分離版）
 // =====================================================
-// 代理店・除外コード（これ以外が転職道社員）
 const AGENT_CODES = new Set(['NK','タイトルマッチ','HumanArx','TM','HA','']);
 
-let contractMap   = {}; // 企業ID → 契約企業情報
-let contractRows  = []; // 契約企業CSV全行
-let appRows       = []; // 応募データCSV全行
-let csvImportData = []; // 応募マッチング結果
-let newCompanies  = []; // 未登録企業リスト
+let contractMap   = {};
+let contractRows2 = []; // 応募モーダル用の契約企業CSV
+let appRows       = [];
+let csvImportData = [];
+let newCompanies  = [];
 
+// ===== 契約企業登録モーダル =====
 function openCsvModal(){
   document.getElementById('csv-modal').style.display='block';
-  document.getElementById('csv-preview').style.display='none';
   document.getElementById('contract-preview').style.display='none';
-  document.getElementById('csv-file-input').value='';
   document.getElementById('contract-file-input').value='';
   document.getElementById('contract-file-label').textContent='契約企業CSVを選択...';
-  document.getElementById('app-file-label').textContent='応募データCSVを選択...';
   document.getElementById('contract-drop-zone').style.borderColor='rgba(0,0,0,0.15)';
-  document.getElementById('csv-drop-zone').style.borderColor='rgba(0,0,0,0.15)';
-  contractMap={};contractRows=[];appRows=[];csvImportData=[];newCompanies=[];
+  newCompanies=[];
 }
 function closeCsvModal(){
   document.getElementById('csv-modal').style.display='none';
@@ -1067,60 +1074,52 @@ function parseCSV(text){
   }).filter(r=>Object.values(r).some(v=>v));
 }
 
-// ① 契約企業CSVを読み込み → 未登録企業を検出
+// 契約企業CSVを選択 → 未登録企業を即検出
 function handleContractFile(file){
   if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
-    contractRows=parseCSV(e.target.result);
+    const rows=parseCSV(e.target.result);
+    // contractMapにも保存（応募取込用）
     contractMap={};
-    contractRows.forEach(r=>{if(r['企業ID'])contractMap[r['企業ID']]=r;});
-    document.getElementById('contract-file-label').textContent='✅ '+contractRows.length+'社を読み込みました';
+    rows.forEach(r=>{if(r['企業ID'])contractMap[r['企業ID']]=r;});
+
+    document.getElementById('contract-file-label').textContent='✅ '+rows.length+'社を読み込みました';
     document.getElementById('contract-drop-zone').style.borderColor='#1D9E75';
 
-    // DBに既に登録済みの企業名セット
+    // DBに登録済みの企業名セット
     const registeredNames=new Set(companiesData.map(c=>c['会社名']||''));
-
-    // 未登録の契約中企業を検出
-    newCompanies=contractRows
-      .filter(r=>!r['契約終了日']) // 契約中のみ
+    newCompanies=rows
+      .filter(r=>!r['契約終了日'])
       .filter(r=>{
-        const baseName=r['企業名'].split('(')[0].trim();
-        return !registeredNames.has(r['企業名']) && !registeredNames.has(baseName);
+        const base=r['企業名'].split('(')[0].trim();
+        return !registeredNames.has(r['企業名'])&&!registeredNames.has(base);
       });
 
-    renderContractPreview();
-    // 応募CSVが先に読み込まれていた場合は自動でマッチング実行
-    if(appRows.length>0) runMatching();
+    const preview=document.getElementById('contract-preview');
+    const summary=document.getElementById('contract-summary');
+    const list=document.getElementById('contract-preview-list');
+    preview.style.display='block';
+
+    const active=rows.filter(r=>!r['契約終了日']).length;
+    const ended=rows.filter(r=>r['契約終了日']).length;
+    summary.innerHTML='契約中 <strong>'+active+'社</strong> / 契約終了 <strong>'+ended+'社</strong> → 未登録 <strong style="color:#534AB7">'+newCompanies.length+'社</strong> を登録します';
+
+    if(!newCompanies.length){
+      list.innerHTML='<div style="padding:12px 14px;font-size:12px;color:#3B6D11;font-weight:500">✅ 全ての契約中企業が登録済みです</div>';
+      document.getElementById('contract-apply-btn').style.display='none';
+      return;
+    }
+    document.getElementById('contract-apply-btn').style.display='block';
+    list.innerHTML=newCompanies.slice(0,50).map(r=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:12px">
+        <span style="font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r['企業名']}</span>
+        <span style="color:#888780;flex-shrink:0;margin-left:8px">${r['所在地']||r['エリア']||''} / ${r['プラン']||''}</span>
+      </div>`).join('')+(newCompanies.length>50?'<div style="padding:8px 14px;font-size:11px;color:#888780">他'+(newCompanies.length-50)+'社...</div>':'');
   };
   reader.readAsText(file,'UTF-8');
 }
 
-function renderContractPreview(){
-  const preview=document.getElementById('contract-preview');
-  const summary=document.getElementById('contract-summary');
-  const list=document.getElementById('contract-preview-list');
-  preview.style.display='block';
-
-  const active=contractRows.filter(r=>!r['契約終了日']).length;
-  const ended=contractRows.filter(r=>r['契約終了日']).length;
-
-  summary.innerHTML=`契約中 <strong>${active}社</strong>・終了 <strong>${ended}社</strong> / 未登録 <strong style="color:#534AB7">${newCompanies.length}社</strong> を一括登録します`;
-
-  if(!newCompanies.length){
-    list.innerHTML='<div style="padding:10px 14px;font-size:12px;color:#3B6D11">✅ 全ての契約企業が登録済みです</div>';
-    document.getElementById('contract-apply-btn').style.display='none';
-    return;
-  }
-  document.getElementById('contract-apply-btn').style.display='block';
-  list.innerHTML=newCompanies.slice(0,30).map(r=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 12px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:12px">
-      <span style="font-weight:500">${r['企業名']}</span>
-      <span style="color:#888780">${r['所在地']||r['エリア']||''} / ${r['プラン']||''}</span>
-    </div>`).join('')+(newCompanies.length>30?`<div style="padding:8px 12px;font-size:11px;color:#888780">他${newCompanies.length-30}社...</div>`:'');
-}
-
-// 契約企業を一括登録
 async function applyContractImport(){
   if(!newCompanies.length){showToast('登録する企業がありません');return;}
   showLoader(true);
@@ -1128,76 +1127,88 @@ async function applyContractImport(){
   let success=0,fail=0;
   for(const r of newCompanies){
     try{
-      const pref=(r['所在地']||r['エリア']||'').replace('県','').replace('都','').replace('道','').replace('府','');
       const j=await gasGet({
         action:'save',
         companyName:r['企業名'],
         pref:r['所在地']||r['エリア']||'',
-        contractStatus: r['契約終了日']?'⏸ 休眠':'✅ 契約済み',
-        hiringTarget:'',sales:'',topSales:'',contact:'',city:'',
-        cars:'',drivers:'',haisha:'',apps:'',
-        hiringMonthly:'',hiringIssue:'',retention:'',shifts:'',
-        ageGroup:'',license:'',costAd:'',costRef:'',feeRate:'',
-        media:'',monthlyAd:'',pastMedia:'',memo:'',heat:'',
-        nextAction:'',dueDate:'',salesPerson:'',
-        applyCount:'',hireCount:'',
+        contractStatus:'✅ 契約済み',
+        city:'',cars:'',drivers:'',sales:'',topSales:'',contact:'',
+        haisha:'',apps:'',hiringTarget:'',hiringMonthly:'',hiringIssue:'',
+        retention:'',shifts:'',ageGroup:'',license:'',costAd:'',costRef:'',
+        feeRate:'',media:'',monthlyAd:'',pastMedia:'',memo:'',heat:'',
+        nextAction:'',dueDate:'',salesPerson:'',applyCount:'',hireCount:'',
       });
-      if(j.ok) success++; else fail++;
+      if(j.ok)success++;else fail++;
     }catch(e){fail++;}
   }
   showLoader(false);
   document.getElementById('contract-apply-btn').disabled=false;
   showToast('✓ '+success+'社を登録しました'+(fail?'（'+fail+'社失敗）':''));
-  await loadData(); // DBを再読み込み
-  renderContractPreview(); // プレビュー更新
+  await loadData();
+  closeCsvModal();
 }
 
-// ② 応募データCSVを読み込み → 担当営業・応募数・入社数を集計
+// ===== 応募データ取込モーダル =====
+function openAppModal(){
+  document.getElementById('app-modal').style.display='block';
+  document.getElementById('csv-preview').style.display='none';
+  document.getElementById('contract-file-input2').value='';
+  document.getElementById('csv-file-input').value='';
+  document.getElementById('contract-file-label2').textContent='CSVを選択...';
+  document.getElementById('app-file-label').textContent='CSVを選択...';
+  contractRows2=[];appRows=[];csvImportData=[];
+}
+function closeAppModal(){
+  document.getElementById('app-modal').style.display='none';
+}
+
+// 応募モーダル用：契約企業CSV
+function handleContractFile2(file){
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const rows=parseCSV(e.target.result);
+    contractRows2={};
+    rows.forEach(r=>{if(r['企業ID'])contractRows2[r['企業ID']]=r;});
+    document.getElementById('contract-file-label2').textContent='✅ '+rows.length+'社を読み込みました';
+    if(appRows.length>0)runMatching();
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+// 応募CSV
 function handleCsvFile(file){
   if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
     appRows=parseCSV(e.target.result).filter(r=>r['企業ID']&&r['ステータス']);
-    document.getElementById('app-file-label').textContent='✅ '+appRows.length+'件の応募データを読み込みました';
-    document.getElementById('csv-drop-zone').style.borderColor='#534AB7';
-    // contractMapがセット済みなら即マッチング、未選択ならトースト
-    if(Object.keys(contractMap).length>0){
-      runMatching();
-    } else {
-      // トーストは出さず、契約企業CSVを選んだときに自動でマッチングが走る
-      document.getElementById('csv-preview').style.display='none';
-    }
+    document.getElementById('app-file-label').textContent='✅ '+appRows.length+'件を読み込みました';
+    if(Object.keys(contractRows2).length>0)runMatching();
+    // 契約企業CSVが未選択でも、contractMapがあれば使う
+    else if(Object.keys(contractMap).length>0){contractRows2=contractMap;runMatching();}
   };
   reader.readAsText(file,'UTF-8');
 }
 
-// 企業IDベースでマッチング + 担当営業を逆算
 function runMatching(){
+  const map=Object.keys(contractRows2).length>0?contractRows2:contractMap;
   const results=[];
   companiesData.forEach(company=>{
     const dbName=company['会社名']||'';
     if(!dbName)return;
-    // 契約企業CSVからdb_nameを含む企業IDを取得
-    const matchedContracts=Object.values(contractMap).filter(c=>c['企業名']&&c['企業名'].includes(dbName));
-    if(!matchedContracts.length)return;
-    const ids=new Set(matchedContracts.map(c=>c['企業ID']));
+    const matched=Object.values(map).filter(c=>c['企業名']&&c['企業名'].includes(dbName));
+    if(!matched.length)return;
+    const ids=new Set(matched.map(c=>c['企業ID']));
     const matchedApps=appRows.filter(r=>ids.has(r['企業ID']));
     const applyCount=matchedApps.length;
     const hireCount=matchedApps.filter(r=>r['ステータス']==='入社').length;
-    // 担当営業を逆算（代理店除外・最多の転職道社員）
     const salesCount={};
-    matchedApps.forEach(r=>{
-      const s=r['営業担当']||'';
-      if(!AGENT_CODES.has(s)){salesCount[s]=(salesCount[s]||0)+1;}
-    });
+    matchedApps.forEach(r=>{const s=r['営業担当']||'';if(!AGENT_CODES.has(s)){salesCount[s]=(salesCount[s]||0)+1;}});
     const topSalesPerson=Object.entries(salesCount).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
-    results.push({company,dbName,applyCount,hireCount,topSalesPerson,rowIndex:company._rowIndex,matchedNames:matchedContracts.map(c=>c['企業名']).slice(0,2),ids:[...ids]});
+    results.push({company,dbName,applyCount,hireCount,topSalesPerson,rowIndex:company._rowIndex,ids:[...ids]});
   });
   csvImportData=results;
-  renderCsvPreview(results);
-}
 
-function renderCsvPreview(results){
   const preview=document.getElementById('csv-preview');
   const summary=document.getElementById('csv-summary');
   const list=document.getElementById('csv-preview-list');
@@ -1205,24 +1216,15 @@ function renderCsvPreview(results){
   const totalApps=results.reduce((s,r)=>s+r.applyCount,0);
   const totalHires=results.reduce((s,r)=>s+r.hireCount,0);
   summary.innerHTML='<strong>'+results.length+'社</strong>にマッチ（応募 <strong>'+totalApps+'件</strong>・入社 <strong>'+totalHires+'名</strong>）';
-  if(!results.length){
-    list.innerHTML='<div style="padding:12px;text-align:center;color:#888780;font-size:12px">マッチする企業が見つかりませんでした</div>';
-    return;
-  }
-  list.innerHTML=results.map(r=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:0.5px solid rgba(0,0,0,0.06)">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:500">${r.dbName}</div>
-        <div style="font-size:11px;color:#888780">担当: ${r.topSalesPerson||'未割当'} / ID:${r.ids.join('・')}</div>
-      </div>
-      <div style="text-align:right;flex-shrink:0;font-size:11px">
-        <div style="color:#534AB7;font-weight:500">応募 ${r.applyCount}件</div>
-        <div style="color:#1D9E75;font-weight:500">入社 ${r.hireCount}名</div>
-      </div>
-    </div>`).join('');
+  list.innerHTML=results.map(r=>
+    '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:0.5px solid rgba(0,0,0,0.06)">'+
+    '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.dbName+'</div>'+
+    '<div style="font-size:11px;color:#888780">担当: '+( r.topSalesPerson||'未割当')+' / ID:'+r.ids.join('・')+'</div></div>'+
+    '<div style="text-align:right;flex-shrink:0;font-size:11px"><div style="color:#534AB7;font-weight:500">応募 '+r.applyCount+'件</div>'+
+    '<div style="color:#1D9E75;font-weight:500">入社 '+r.hireCount+'名</div></div></div>'
+  ).join('');
 }
 
-// 担当営業・応募数・入社数をSheetsに反映
 async function applyCSVImport(){
   if(!csvImportData.length){showToast('インポートするデータがありません');return;}
   showLoader(true);
@@ -1230,21 +1232,15 @@ async function applyCSVImport(){
   let success=0,fail=0;
   for(const r of csvImportData){
     try{
-      const j=await gasGet({
-        action:'updateApply',
-        rowIndex:r.rowIndex,
-        applyCount:r.applyCount,
-        hireCount:r.hireCount,
-        salesPerson:r.topSalesPerson,
-      });
-      if(j.ok) success++; else fail++;
+      const j=await gasGet({action:'updateApply',rowIndex:r.rowIndex,applyCount:r.applyCount,hireCount:r.hireCount,salesPerson:r.topSalesPerson});
+      if(j.ok)success++;else fail++;
     }catch(e){fail++;}
   }
   showLoader(false);
   document.getElementById('csv-apply-btn').disabled=false;
   showToast('✓ '+success+'社を更新しました'+(fail?'（'+fail+'社失敗）':''));
   await loadData();
-  closeCsvModal();
+  closeAppModal();
 }
 
 
