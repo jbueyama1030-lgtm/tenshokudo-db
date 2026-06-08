@@ -1060,11 +1060,18 @@ function closeCsvModal(){
   document.getElementById('csv-modal').style.display='none';
 }
 
-function removeBOM(str){return str.charCodeAt(0)===0xFEFF?str.slice(1):str;}
+function removeBOM(str){
+  // BOM（\uFEFF）を除去
+  if(str.charCodeAt(0)===0xFEFF) str=str.slice(1);
+  // \uFEFFが文字列内に残っていても除去
+  return str.replace(/^\uFEFF/,'');
+}
 function parseCSV(text){
   text=removeBOM(text);
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  const headers=lines[0].split(',').map(h=>h.trim());
+  if(!lines.length)return[];
+  const headers=lines[0].split(',').map(h=>h.trim().replace(/^\uFEFF/,''));
+  console.log('CSV列名:', headers); // デバッグ
   return lines.slice(1).map(line=>{
     const vals=[];let cur='',inQ=false;
     for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){vals.push(cur);cur='';}else cur+=ch;}
@@ -1077,9 +1084,19 @@ function parseCSV(text){
 // 契約企業CSVを選択 → 未登録企業を即検出
 function handleContractFile(file){
   if(!file)return;
+  // ArrayBufferで読み込みBOMを確実に除去
   const reader=new FileReader();
   reader.onload=e=>{
-    const rows=parseCSV(e.target.result);
+    const bytes=new Uint8Array(e.target.result);
+    let text;
+    if(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+      text=new TextDecoder('utf-8').decode(bytes.slice(3));
+    } else {
+      text=new TextDecoder('utf-8').decode(bytes);
+    }
+    const rows=parseCSV(text);
+    console.log('parseCSV行数:', rows.length, '1行目:', rows[0]);
+
     contractMap={};
     rows.forEach(r=>{if(r['企業ID'])contractMap[r['企業ID']]=r;});
 
@@ -1087,10 +1104,9 @@ function handleContractFile(file){
     document.getElementById('contract-drop-zone').style.borderColor='#1D9E75';
 
     const registeredNames=new Set(companiesData.map(c=>c['会社名']||''));
-    console.log('DB登録済み:', registeredNames.size, '社');
     newCompanies=rows
-      .filter(r=>!r['契約終了日'].trim())
-      .filter(r=>r['企業名']&&r['企業名'].trim()) // 企業名が空の行を除外
+      .filter(r=>{const t=(r['契約終了日']||'').trim();return !t;})
+      .filter(r=>(r['企業名']||'').trim())
       .filter(r=>{
         const base=(r['企業名']||'').split('(')[0].trim();
         return !registeredNames.has(r['企業名'])&&!registeredNames.has(base);
@@ -1101,8 +1117,8 @@ function handleContractFile(file){
     const summary=document.getElementById('contract-summary');
     const list=document.getElementById('contract-preview-list');
     preview.style.display='block';
-    const active=rows.filter(r=>!r['契約終了日'].trim()).length;
-    const ended=rows.filter(r=>r['契約終了日'].trim()).length;
+    const active=rows.filter(r=>!(r['契約終了日']||'').trim()).length;
+    const ended=rows.filter(r=>(r['契約終了日']||'').trim()).length;
     summary.innerHTML='契約中 <strong>'+active+'社</strong> / 契約終了 <strong>'+ended+'社</strong> → 未登録 <strong style="color:#534AB7">'+newCompanies.length+'社</strong> を登録します';
     if(!newCompanies.length){
       list.innerHTML='<div style="padding:12px 14px;font-size:12px;color:#3B6D11;font-weight:500">✅ 全ての契約中企業が登録済みです</div>';
@@ -1112,12 +1128,12 @@ function handleContractFile(file){
     document.getElementById('contract-apply-btn').style.display='block';
     list.innerHTML=newCompanies.slice(0,50).map(r=>
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:0.5px solid rgba(0,0,0,0.06);font-size:12px">'+
-      '<span style="font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+r['企業名']+'</span>'+
+      '<span style="font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r['企業名']||'')+'</span>'+
       '<span style="color:#888780;flex-shrink:0;margin-left:8px">'+(r['所在地']||r['エリア']||'')+' / '+(r['プラン']||'')+'</span>'+
       '</div>'
     ).join('')+(newCompanies.length>50?'<div style="padding:8px 14px;font-size:11px;color:#888780">他'+(newCompanies.length-50)+'社...</div>':'');
   };
-  reader.readAsText(file,'UTF-8');
+  reader.readAsArrayBuffer(file);
 }
 
 async function applyContractImport(){
