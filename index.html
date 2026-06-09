@@ -810,6 +810,14 @@ function renderMyList(){
 }
 
 async function gasGet(params){const url=GAS_URL+'?'+new URLSearchParams(params).toString();const r=await fetch(url);return r.json();}
+async function gasPost(action,payload){
+  const r=await fetch(GAS_URL,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action,payload}),
+  });
+  return r.json();
+}
 
 async function loadData(){showLoader(true);try{const[j1,j2,j3]=await Promise.all([gasGet({action:'getSummary'}),gasGet({action:'getAll'}),gasGet({action:'getDeletedList'})]);summaryData={};if(j1.ok&&j1.data)j1.data.forEach(row=>{if(row['都道府県'])summaryData[row['都道府県']]=row;});companiesData=j2.ok?j2.data:[];deletedNames=new Set(j3.ok?j3.data:[]);updateAreaStats();renderSalesTabs();if(allFeatures)renderHomeMap();}catch(e){showToast('データ読み込みエラー: '+e.message);}showLoader(false);}
 function updateAreaStats(){Object.entries(AREAS).forEach(([aid,a])=>{let total=0,tankas=[];a.prefs.forEach(pid=>{const pName=ID_PREF[pid];if(pName&&summaryData[pName]){total+=Number(summaryData[pName]['登録企業数']||0);const t=Number(summaryData[pName]['平均採用単価（掲載型）']||0);if(t>0)tankas.push(t);}});a.companies=total;a.avgTanka=tankas.length?Math.round(tankas.reduce((a,b)=>a+b,0)/tankas.length):null;});}
@@ -1233,28 +1241,25 @@ async function applyContractImport(){
   showLoader(true);
   document.getElementById('contract-apply-btn').disabled=true;
 
-  const CHUNK=50;
+  const CHUNK=10;
   let success=0,fail=0;
   for(let i=0;i<newCompanies.length;i+=CHUNK){
     const chunk=newCompanies.slice(i,i+CHUNK);
-    const companies=chunk.map(r=>({
-      companyName: r['企業名']||'',
-      pref:        r['所在地']||r['エリア']||'',
-      contractStatus: '✅ 契約済み',
-      contractId:  r['企業ID']||'', // ★ 企業IDを保存
-      city:'',cars:'',drivers:'',sales:'',topSales:'',contact:'',
-      haisha:'',apps:'',hiringTarget:'',hiringMonthly:'',hiringIssue:'',
-      retention:'',shifts:'',ageGroup:'',license:'',costAd:'',costRef:'',
-      feeRate:'',media:'',monthlyAd:'',pastMedia:'',memo:'',heat:'',
-      nextAction:'',dueDate:'',salesPerson:'',applyCount:'',hireCount:'',
-    }));
-    try{
-      const url=GAS_URL+'?action=bulkSave&companiesJSON='+encodeURIComponent(JSON.stringify(companies));
-      const r=await fetch(url);
-      const j=await r.json();
-      if(j.ok) success+=j.count||chunk.length;
-      else fail+=chunk.length;
-    }catch(e){fail+=chunk.length;}
+    const promises=chunk.map(r=>
+      gasGet({
+        action:'save',
+        companyName:r['企業名']||'',
+        pref:r['所在地']||r['エリア']||'',
+        contractStatus:'✅ 契約済み',
+        contractId:r['企業ID']||'',
+        city:'',cars:'',drivers:'',sales:'',topSales:'',contact:'',
+        haisha:'',apps:'',hiringTarget:'',hiringMonthly:'',hiringIssue:'',
+        retention:'',shifts:'',ageGroup:'',license:'',costAd:'',costRef:'',
+        feeRate:'',media:'',monthlyAd:'',pastMedia:'',memo:'',heat:'',
+        nextAction:'',dueDate:'',salesPerson:'',applyCount:'',hireCount:'',
+      }).then(j=>{if(j.ok)success++;else fail++;}).catch(()=>fail++)
+    );
+    await Promise.all(promises);
   }
 
   showLoader(false);
@@ -1377,24 +1382,17 @@ async function applyCSVImport(){
   showLoader(true);
   document.getElementById('csv-apply-btn').disabled=true;
 
-  const CHUNK=50;
+  // 10社ずつ並列GETリクエスト（URL長制限を回避しつつ高速化）
+  const CHUNK=10;
   let success=0,fail=0;
   for(let i=0;i<csvImportData.length;i+=CHUNK){
     const chunk=csvImportData.slice(i,i+CHUNK);
-    const items=chunk.map(r=>({
-      rowIndex:r.rowIndex,
-      applyCount:r.applyCount,
-      hireCount:r.hireCount,
-      salesPerson:r.topSalesPerson||'',
-      contractId:r.contractId||'',
-    }));
-    try{
-      const url=GAS_URL+'?action=bulkUpdateApply&itemsJSON='+encodeURIComponent(JSON.stringify(items));
-      const resp=await fetch(url);
-      const j=await resp.json();
-      if(j.ok) success+=j.count||chunk.length;
-      else fail+=chunk.length;
-    }catch(e){fail+=chunk.length;}
+    const promises=chunk.map(r=>
+      gasGet({action:'updateApply',rowIndex:r.rowIndex,applyCount:r.applyCount,hireCount:r.hireCount,salesPerson:r.topSalesPerson||''})
+        .then(j=>{if(j.ok)success++;else fail++;})
+        .catch(()=>fail++)
+    );
+    await Promise.all(promises);
   }
 
   showLoader(false);
