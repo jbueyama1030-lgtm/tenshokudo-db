@@ -1089,18 +1089,9 @@ function parseCSV(text){
 // 契約企業CSVを選択 → 未登録企業を即検出
 function handleContractFile(file){
   if(!file)return;
-  // ArrayBufferで読み込みBOMを確実に除去
   const reader=new FileReader();
   reader.onload=e=>{
-    const bytes=new Uint8Array(e.target.result);
-    let text;
-    if(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
-      text=new TextDecoder('utf-8').decode(bytes.slice(3));
-    } else {
-      text=new TextDecoder('utf-8').decode(bytes);
-    }
-    // 改行を正規化（\r\n → \n、\r → \n）
-    text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+    const text=e.target.result;
     const rows=parseCSV(text);
     console.log('parseCSV行数:', rows.length, '1行目:', rows[0]);
 
@@ -1146,7 +1137,7 @@ function handleContractFile(file){
       '</div>'
     ).join('')+(newCompanies.length>50?'<div style="padding:8px 14px;font-size:11px;color:#888780">他'+(newCompanies.length-50)+'社...</div>':'');
   };
-  reader.readAsArrayBuffer(file);
+  reader.readAsText(file); // 文字コード自動検出
 }
 
 async function applyContractImport(){
