@@ -231,7 +231,13 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
       <div style="flex:1;min-width:0">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px" id="my-metrics" class="my-metrics-grid"></div>
         <div class="card">
-          <div style="padding:10px 14px;border-bottom:0.5px solid rgba(0,0,0,0.08)">
+          <!-- 3分類タブ -->
+          <div style="display:flex;border-bottom:0.5px solid rgba(0,0,0,0.1);background:#fff">
+            <div id="mtab-active" class="mtab active" onclick="switchMyTab('active')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid #534AB7;color:#534AB7">✅ 契約中</div>
+            <div id="mtab-approach" class="mtab" onclick="switchMyTab('approach')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:#888780">📋 アプローチ中</div>
+            <div id="mtab-ended" class="mtab" onclick="switchMyTab('ended')" style="flex:1;padding:10px;text-align:center;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;color:#888780">📉 掲載落ち</div>
+          </div>
+          <div style="padding:8px 14px;border-bottom:0.5px solid rgba(0,0,0,0.08)">
             <!-- 検索バー -->
             <div style="position:relative;margin-bottom:8px">
               <i class="ti ti-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px;color:#888780;pointer-events:none"></i>
@@ -550,6 +556,24 @@ const fmt=n=>n?'¥'+Number(n).toLocaleString():'—';
 const fmtN=n=>n?Number(n).toLocaleString():'—';
 
 let currentSalesTab='all'; // 現在選択中の担当営業タブ
+let currentMyTab='active'; // 担当タブ内の3分類（active/approach/ended）
+
+function switchMyTab(tab){
+  currentMyTab=tab;
+  // タブのスタイル切り替え
+  ['active','approach','ended'].forEach(t=>{
+    const el=document.getElementById('mtab-'+t);
+    if(!el)return;
+    if(t===tab){
+      el.style.borderBottom='2px solid #534AB7';
+      el.style.color='#534AB7';
+    } else {
+      el.style.borderBottom='2px solid transparent';
+      el.style.color='#888780';
+    }
+  });
+  renderMyList();
+}
 
 function goScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -619,6 +643,7 @@ function switchSalesTab(salesName, el){
   if(statusF) statusF.value='';
   if(heatF) heatF.value='';
   if(sortS) sortS.value='default';
+  currentMyTab='active'; // 担当タブを切り替えたら契約中に戻す
 
   if(salesName==='all'){
     goScreen('home');
@@ -719,57 +744,74 @@ function renderMyList(){
     filtered=filtered.sort((a,b)=>(a['会社名']||'').localeCompare(b['会社名']||'','ja'));
   }
 
-  // 契約中 / アプローチ中 でグループ分け
+  // 3分類タブでフィルタリング
   const now=new Date();const week=new Date(now.getTime()+7*24*60*60*1000);
-  const contracted=filtered.filter(c=>(c['契約ステータス']||'').includes('契約済み'));
-  const approaching=filtered.filter(c=>!(c['契約ステータス']||'').includes('契約済み'));
+  let tabFiltered;
+  if(currentMyTab==='active'){
+    tabFiltered=filtered.filter(c=>(c['契約ステータス']||'').includes('契約済み'));
+  } else if(currentMyTab==='approach'){
+    tabFiltered=filtered.filter(c=>{
+      const s=c['契約ステータス']||'';
+      return !s.includes('契約済み')&&!s.includes('休眠')&&s!=='';
+    });
+  } else { // ended = 掲載落ち（休眠 or ステータス未設定）
+    tabFiltered=filtered.filter(c=>{
+      const s=c['契約ステータス']||'';
+      return s.includes('休眠')||s==='';
+    });
+  }
 
-  const renderGroup=(companies,label,color)=>{
-    if(!companies.length) return '';
-    return `<div style="padding:8px 14px 4px;font-size:11px;font-weight:600;color:${color};background:rgba(0,0,0,0.02);border-bottom:0.5px solid rgba(0,0,0,0.06)">${label}（${companies.length}社）</div>`
-      +companies.map(c=>{
-        const d=c['期日']?new Date(c['期日']):null;
-        const isPast=d&&d<now;
-        const isUrgent=d&&d>=now&&d<=week;
-        const actionColor=isPast?'#A32D2D':isUrgent?'#854F0B':'#888780';
-        const actionIcon=isPast?'⚠':isUrgent?'⏰':'';
-        return `<div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})" style="padding:8px 14px">
-          <div style="width:28px;height:28px;border-radius:6px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
-          <div style="flex:1;min-width:0;margin-left:2px">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${c['会社名']||'—'}</span>
-              ${statusBadge(c['契約ステータス'])}
-              <span class="badge ${heatClass(c['温度感'])}" style="font-size:10px">${(c['温度感']||'').replace('見込み','').replace('継続','')}</span>
-            </div>
-            <div style="font-size:11px;color:#888780;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
-              <span>${c['都道府県']||''} ${c['市区町村']||''}</span>
-              ${c['転職道応募数']?`<span style="color:#534AB7">応募${c['転職道応募数']}件</span>`:''}
-              ${c['転職道入社数']?`<span style="color:#1D9E75">入社${c['転職道入社数']}名</span>`:''}
-              ${c['次回アクション']?`<span style="color:${actionColor}">${actionIcon} ${c['次回アクション']}${c['期日']?' ('+c['期日']+')':''}</span>`:''}
-            </div>
-          </div>
-          <div style="text-align:right;flex-shrink:0;margin-left:8px">
-            <div style="font-size:12px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div>
-          </div>
-          <i class="ti ti-chevron-right" style="font-size:14px;color:#888780;flex-shrink:0"></i>
-        </div>`;
-      }).join('');
-  };
+  // タブの件数を更新
+  const activeCount=filtered.filter(c=>(c['契約ステータス']||'').includes('契約済み')).length;
+  const approachCount=filtered.filter(c=>{const s=c['契約ステータス']||'';return !s.includes('契約済み')&&!s.includes('休眠')&&s!=='';}).length;
+  const endedCount=filtered.filter(c=>{const s=c['契約ステータス']||'';return s.includes('休眠')||s==='';}).length;
+  const mtabActive=document.getElementById('mtab-active');
+  const mtabApproach=document.getElementById('mtab-approach');
+  const mtabEnded=document.getElementById('mtab-ended');
+  if(mtabActive) mtabActive.innerHTML=`✅ 契約中 <span style="font-size:11px;background:#EEEDFE;color:#534AB7;padding:1px 6px;border-radius:10px">${activeCount}</span>`;
+  if(mtabApproach) mtabApproach.innerHTML=`📋 アプローチ中 <span style="font-size:11px;background:#F1EFE8;color:#888780;padding:1px 6px;border-radius:10px">${approachCount}</span>`;
+  if(mtabEnded) mtabEnded.innerHTML=`📉 掲載落ち <span style="font-size:11px;background:#F1EFE8;color:#888780;padding:1px 6px;border-radius:10px">${endedCount}</span>`;
 
   const countEl=document.getElementById('my-list-count');
-  if(countEl) countEl.textContent=filtered.length+'社表示'+(searchQ||statusFilter||heatFilter?' (絞り込み中)':'');
+  if(countEl) countEl.textContent=tabFiltered.length+'社表示'+(searchQ||statusFilter||heatFilter?' (絞り込み中)':'');
 
   const list=document.getElementById('my-company-list');
-  if(!filtered.length){
+  if(!tabFiltered.length){
     list.innerHTML='<div style="padding:24px;text-align:center;color:#888780;font-size:13px"><i class="ti ti-building-off" style="font-size:24px;display:block;margin-bottom:8px"></i>該当する企業がありません</div>';
     return;
   }
-  list.innerHTML=renderGroup(contracted,'✅ 契約中','#3B6D11')+renderGroup(approaching,'📋 アプローチ中','#854F0B');
+  list.innerHTML=tabFiltered.map(c=>{
+    const d=c['期日']?new Date(c['期日']):null;
+    const isPast=d&&d<now;
+    const isUrgent=d&&d>=now&&d<=week;
+    const actionColor=isPast?'#A32D2D':isUrgent?'#854F0B':'#888780';
+    const actionIcon=isPast?'⚠':isUrgent?'⏰':'';
+    return `<div class="company-row" onclick="showCompany(${companiesData.indexOf(c)})" style="padding:8px 14px">
+      <div style="width:28px;height:28px;border-radius:6px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
+      <div style="flex:1;min-width:0;margin-left:2px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${c['会社名']||'—'}</span>
+          ${statusBadge(c['契約ステータス'])}
+          <span class="badge ${heatClass(c['温度感'])}" style="font-size:10px">${(c['温度感']||'').replace('見込み','').replace('継続','')}</span>
+        </div>
+        <div style="font-size:11px;color:#888780;margin-top:2px;display:flex;gap:8px;flex-wrap:wrap">
+          <span>${c['都道府県']||''} ${c['市区町村']||''}</span>
+          ${c['転職道応募数']?`<span style="color:#534AB7">応募${c['転職道応募数']}件</span>`:''}
+          ${c['転職道入社数']?`<span style="color:#1D9E75">入社${c['転職道入社数']}名</span>`:''}
+          ${c['次回アクション']?`<span style="color:${actionColor}">${actionIcon} ${c['次回アクション']}${c['期日']?' ('+c['期日']+')':''}</span>`:''}
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:8px">
+        <div style="font-size:12px;font-weight:500">${c['掲載型採用単価']?fmt(c['掲載型採用単価']):'—'}</div>
+      </div>
+      <i class="ti ti-chevron-right" style="font-size:14px;color:#888780;flex-shrink:0"></i>
+    </div>`;
+  }).join('');
 }
 
 async function gasGet(params){const url=GAS_URL+'?'+new URLSearchParams(params).toString();const r=await fetch(url);return r.json();}
 
-async function loadData(){showLoader(true);try{const[j1,j2]=await Promise.all([gasGet({action:'getSummary'}),gasGet({action:'getAll'})]);summaryData={};if(j1.ok&&j1.data)j1.data.forEach(row=>{if(row['都道府県'])summaryData[row['都道府県']]=row;});companiesData=j2.ok?j2.data:[];updateAreaStats();renderSalesTabs();if(allFeatures)renderHomeMap();}catch(e){showToast('データ読み込みエラー: '+e.message);}showLoader(false);}
+async function loadData(){showLoader(true);try{const[j1,j2,j3]=await Promise.all([gasGet({action:'getSummary'}),gasGet({action:'getAll'}),gasGet({action:'getDeletedList'})]);summaryData={};if(j1.ok&&j1.data)j1.data.forEach(row=>{if(row['都道府県'])summaryData[row['都道府県']]=row;});companiesData=j2.ok?j2.data:[];deletedNames=new Set(j3.ok?j3.data:[]);updateAreaStats();renderSalesTabs();if(allFeatures)renderHomeMap();}catch(e){showToast('データ読み込みエラー: '+e.message);}showLoader(false);}
 function updateAreaStats(){Object.entries(AREAS).forEach(([aid,a])=>{let total=0,tankas=[];a.prefs.forEach(pid=>{const pName=ID_PREF[pid];if(pName&&summaryData[pName]){total+=Number(summaryData[pName]['登録企業数']||0);const t=Number(summaryData[pName]['平均採用単価（掲載型）']||0);if(t>0)tankas.push(t);}});a.companies=total;a.avgTanka=tankas.length?Math.round(tankas.reduce((a,b)=>a+b,0)/tankas.length):null;});}
 
 function getBBoxRaw(coords){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;coords.forEach(([x,y])=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);});return{minX,minY,maxX,maxY};}
@@ -809,6 +851,9 @@ function showCompany(idx){
       <button class="btn btn-primary" style="font-size:12px;padding:6px 14px;flex-shrink:0" onclick="startEdit(${idx})">
         <i class="ti ti-edit"></i> 編集
       </button>
+      <button class="btn" style="font-size:12px;padding:6px 14px;flex-shrink:0;color:#A32D2D;border-color:#A32D2D" onclick="deleteCompany(${idx})">
+        <i class="ti ti-trash"></i> 削除
+      </button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
       <div class="card" style="margin-bottom:0"><div class="card-head"><div class="card-title"><i class="ti ti-building" style="font-size:13px;margin-right:4px"></i>企業情報</div></div>
@@ -844,6 +889,31 @@ function showCompany(idx){
         ${c['次回アクション']?`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:7px 10px;background:#F1EFE8;border-radius:8px"><span style="width:9px;height:9px;border-radius:50%;background:#1D9E75;flex-shrink:0"></span><span style="flex:1">${c['次回アクション']}</span><span style="color:#888780">${c['期日']||''}</span></div>`:''}
       </div>
     </div>`;
+}
+
+// 企業削除
+async function deleteCompany(idx){
+  const c=companiesData[idx];if(!c)return;
+  if(!c._rowIndex){showToast('行番号が取得できません。GASをv3に更新してください。');return;}
+  // 確認ダイアログ
+  if(!confirm(`「${c['会社名']}」を削除しますか？\nこの操作は取り消せません。`))return;
+  showLoader(true);
+  try{
+    const j=await gasGet({action:'delete',rowIndex:c._rowIndex});
+    if(j.ok){
+      showToast('✓ 削除しました');
+      await loadData();
+      // 都道府県一覧に戻る
+      if(currentPref) clickPref(currentPref);
+      else if(currentArea) clickArea(currentArea);
+      else goScreen('home');
+    } else {
+      showToast('削除エラー: '+(j.error||'不明'));
+    }
+  }catch(e){
+    showToast('通信エラー: '+e.message);
+  }
+  showLoader(false);
 }
 
 // 編集モード：既存データをフォームに流し込む
@@ -1042,6 +1112,7 @@ function showLoader(show){document.getElementById('loader').style.display=show?'
 // =====================================================
 const AGENT_CODES = new Set(['NK','タイトルマッチ','HumanArx','TM','HA','']);
 
+let deletedNames  = new Set(); // 削除済み企業名
 let contractMap   = {};
 let contractRows2 = []; // 応募モーダル用の契約企業CSV
 let appRows       = [];
@@ -1126,7 +1197,9 @@ function handleContractFile(file){
     console.log('契約中行数:', activeRows.length, '1行目:', activeRows[0]);
     newCompanies=activeRows.filter(r=>{
       const csvName=(r['企業名']||'').trim();
-      // DBに完全一致する企業名があれば登録済み
+      // 削除済みリストに含まれていれば除外
+      if(deletedNames.has(csvName)) return false;
+      // DB企業名と完全一致すれば登録済み
       if(registeredNames.has(csvName)) return false;
       // DBのいずれかの企業名がCSV企業名に含まれていれば登録済み
       for(const dbName of registeredNames){
@@ -1163,23 +1236,31 @@ async function applyContractImport(){
   if(!newCompanies.length){showToast('登録する企業がありません');return;}
   showLoader(true);
   document.getElementById('contract-apply-btn').disabled=true;
+
+  // 全社を一括でGASに送信（50社ずつに分割）
+  const CHUNK=50;
   let success=0,fail=0;
-  for(const r of newCompanies){
+  for(let i=0;i<newCompanies.length;i+=CHUNK){
+    const chunk=newCompanies.slice(i,i+CHUNK);
+    const companies=chunk.map(r=>({
+      companyName: r['企業名']||'',
+      pref:        r['所在地']||r['エリア']||'',
+      contractStatus: '✅ 契約済み',
+      city:'',cars:'',drivers:'',sales:'',topSales:'',contact:'',
+      haisha:'',apps:'',hiringTarget:'',hiringMonthly:'',hiringIssue:'',
+      retention:'',shifts:'',ageGroup:'',license:'',costAd:'',costRef:'',
+      feeRate:'',media:'',monthlyAd:'',pastMedia:'',memo:'',heat:'',
+      nextAction:'',dueDate:'',salesPerson:'',applyCount:'',hireCount:'',
+    }));
     try{
-      const j=await gasGet({
-        action:'save',
-        companyName:r['企業名'],
-        pref:r['所在地']||r['エリア']||'',
-        contractStatus:'✅ 契約済み',
-        city:'',cars:'',drivers:'',sales:'',topSales:'',contact:'',
-        haisha:'',apps:'',hiringTarget:'',hiringMonthly:'',hiringIssue:'',
-        retention:'',shifts:'',ageGroup:'',license:'',costAd:'',costRef:'',
-        feeRate:'',media:'',monthlyAd:'',pastMedia:'',memo:'',heat:'',
-        nextAction:'',dueDate:'',salesPerson:'',applyCount:'',hireCount:'',
-      });
-      if(j.ok)success++;else fail++;
-    }catch(e){fail++;}
+      const url=GAS_URL+'?action=bulkSave&companiesJSON='+encodeURIComponent(JSON.stringify(companies));
+      const r=await fetch(url);
+      const j=await r.json();
+      if(j.ok) success+=j.count||chunk.length;
+      else fail+=chunk.length;
+    }catch(e){fail+=chunk.length;}
   }
+
   showLoader(false);
   document.getElementById('contract-apply-btn').disabled=false;
   showToast('✓ '+success+'社を登録しました'+(fail?'（'+fail+'社失敗）':''));
@@ -1235,7 +1316,12 @@ function runMatching(){
   companiesData.forEach(company=>{
     const dbName=company['会社名']||'';
     if(!dbName)return;
-    const matched=Object.values(map).filter(c=>c['企業名']&&c['企業名'].includes(dbName));
+    // ★ 厳密マッチング：DB名のベース（括弧前）とCSV名のベースが完全一致
+    const dbBase=dbName.split('(')[0].trim();
+    const matched=Object.values(map).filter(c=>{
+      const csvBase=(c['企業名']||'').split('(')[0].trim();
+      return csvBase===dbBase;
+    });
     if(!matched.length)return;
     const ids=new Set(matched.map(c=>c['企業ID']));
     const matchedApps=appRows.filter(r=>ids.has(r['企業ID']));
