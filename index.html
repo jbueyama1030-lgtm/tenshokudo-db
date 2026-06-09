@@ -1089,11 +1089,14 @@ function parseCSV(text){
 // 契約企業CSVを選択 → 未登録企業を即検出
 function handleContractFile(file){
   if(!file)return;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const text=e.target.result;
-    const rows=parseCSV(text);
-    console.log('parseCSV行数:', rows.length, '1行目:', rows[0]);
+  // Blob→URL→fetch でUTF-8を確実に読み込む
+  const url=URL.createObjectURL(file);
+  fetch(url)
+    .then(r=>r.text())
+    .then(text=>{
+      URL.revokeObjectURL(url);
+      const rows=parseCSV(text);
+      console.log('parseCSV行数:', rows.length, '1行目:', rows[0]);
 
     contractMap={};
     rows.forEach(r=>{if(r['企業ID'])contractMap[r['企業ID']]=r;});
@@ -1136,8 +1139,8 @@ function handleContractFile(file){
       '<span style="color:#888780;flex-shrink:0;margin-left:8px">'+(r['所在地']||r['エリア']||'')+' / '+(r['プラン']||'')+'</span>'+
       '</div>'
     ).join('')+(newCompanies.length>50?'<div style="padding:8px 14px;font-size:11px;color:#888780">他'+(newCompanies.length-50)+'社...</div>':'');
-  };
-  reader.readAsText(file); // 文字コード自動検出
+    })
+    .catch(err=>{console.error('CSV読込エラー:',err);showToast('CSV読み込みに失敗しました');});
 }
 
 async function applyContractImport(){
