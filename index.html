@@ -1068,18 +1068,22 @@ function removeBOM(str){
   return str.replace(/^\uFEFF/,'');
 }
 function parseCSV(text){
-  text=removeBOM(text);
-  const lines=text.split(/\r?\n/).filter(l=>l.trim());
-  if(!lines.length)return[];
-  const headers=lines[0].split(',').map(h=>h.trim().replace(/^\uFEFF/,''));
-  console.log('CSV列名:', headers); // デバッグ
-  return lines.slice(1).map(line=>{
-    const vals=[];let cur='',inQ=false;
-    for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){vals.push(cur);cur='';}else cur+=ch;}
-    vals.push(cur);
-    const obj={};headers.forEach((h,i)=>obj[h]=(vals[i]||'').trim());
-    return obj;
-  }).filter(r=>Object.values(r).some(v=>v));
+  text=text.replace(/^\uFEFF/,'').replace(/\uFEFF/g,''); // BOM除去
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');   // 改行正規化
+  const lines=text.split('\n');
+  const nonEmpty=lines.filter(l=>l.trim());
+  if(!nonEmpty.length)return[];
+  const headers=nonEmpty[0].split(',').map(h=>h.trim());
+  console.log('CSV列名:', headers, '列数:', headers.length);
+  const result=[];
+  for(let i=1;i<nonEmpty.length;i++){
+    const vals=nonEmpty[i].split(',');
+    const obj={};
+    headers.forEach((h,j)=>obj[h]=(vals[j]||'').trim());
+    if(Object.values(obj).some(v=>v)) result.push(obj);
+  }
+  console.log('parseCSV:', result.length,'行 / 1行目:', JSON.stringify(result[0]));
+  return result;
 }
 
 // 契約企業CSVを選択 → 未登録企業を即検出
@@ -1095,6 +1099,8 @@ function handleContractFile(file){
     } else {
       text=new TextDecoder('utf-8').decode(bytes);
     }
+    // 改行を正規化（\r\n → \n、\r → \n）
+    text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
     const rows=parseCSV(text);
     console.log('parseCSV行数:', rows.length, '1行目:', rows[0]);
 
