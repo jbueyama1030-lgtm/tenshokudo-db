@@ -1105,17 +1105,19 @@ function handleContractFile(file){
     document.getElementById('contract-drop-zone').style.borderColor='#1D9E75';
 
     const registeredNames=new Set(companiesData.map(c=>c['会社名']||''));
-    // DB企業名をベース名（括弧前）のセットも作る
-    const registeredBase=new Set(companiesData.map(c=>(c['会社名']||'').split('(')[0].trim()));
-    newCompanies=rows
-      .filter(r=>{const t=(r['契約終了日']||'').trim();return !t;})
-      .filter(r=>(r['企業名']||'').trim())
-      .filter(r=>{
-        const csvName=(r['企業名']||'').trim();
-        const csvBase=csvName.split('(')[0].trim();
-        // CSV企業名がDB企業名と完全一致 または CSVのベース名がDBに登録済み
-        return !registeredNames.has(csvName) && !registeredBase.has(csvBase);
-      });
+    console.log('DB登録社数:', registeredNames.size, [...registeredNames].slice(0,3));
+    const activeRows=rows.filter(r=>!(r['契約終了日']||'').trim()).filter(r=>(r['企業名']||'').trim());
+    console.log('契約中行数:', activeRows.length, '1行目:', activeRows[0]);
+    newCompanies=activeRows.filter(r=>{
+      const csvName=(r['企業名']||'').trim();
+      // DBに完全一致する企業名があれば登録済み
+      if(registeredNames.has(csvName)) return false;
+      // DBのいずれかの企業名がCSV企業名に含まれていれば登録済み
+      for(const dbName of registeredNames){
+        if(dbName && csvName.includes(dbName)) return false;
+      }
+      return true;
+    });
     console.log('未登録企業:', newCompanies.length, '社');
 
     const preview=document.getElementById('contract-preview');
