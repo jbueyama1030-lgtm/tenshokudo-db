@@ -1199,12 +1199,8 @@ function handleContractFile(file){
       const csvName=(r['企業名']||'').trim();
       // 削除済みリストに含まれていれば除外
       if(deletedNames.has(csvName)) return false;
-      // DB企業名と完全一致すれば登録済み
+      // DB企業名と完全一致すれば登録済み（1ID=1企業）
       if(registeredNames.has(csvName)) return false;
-      // DBのいずれかの企業名がCSV企業名に含まれていれば登録済み
-      for(const dbName of registeredNames){
-        if(dbName && csvName.includes(dbName)) return false;
-      }
       return true;
     });
     console.log('未登録企業:', newCompanies.length, '社');
@@ -1237,7 +1233,6 @@ async function applyContractImport(){
   showLoader(true);
   document.getElementById('contract-apply-btn').disabled=true;
 
-  // 全社を一括でGASに送信（50社ずつに分割）
   const CHUNK=50;
   let success=0,fail=0;
   for(let i=0;i<newCompanies.length;i+=CHUNK){
@@ -1246,6 +1241,7 @@ async function applyContractImport(){
       companyName: r['企業名']||'',
       pref:        r['所在地']||r['エリア']||'',
       contractStatus: '✅ 契約済み',
+      contractId:  r['企業ID']||'', // ★ 企業IDを保存
       city:'',cars:'',drivers:'',sales:'',topSales:'',contact:'',
       haisha:'',apps:'',hiringTarget:'',hiringMonthly:'',hiringIssue:'',
       retention:'',shifts:'',ageGroup:'',license:'',costAd:'',costRef:'',
@@ -1327,26 +1323,36 @@ function handleCsvFile(file){
 }
 
 function runMatching(){
-  const map=Object.keys(contractRows2).length>0?contractRows2:contractMap;
   const results=[];
   companiesData.forEach(company=>{
+    const dbId=(company['企業ID']||'').trim();
     const dbName=company['会社名']||'';
     if(!dbName)return;
-    // ★ 厳密マッチング：DB名のベース（括弧前）とCSV名のベースが完全一致
-    const dbBase=dbName.split('(')[0].trim();
-    const matched=Object.values(map).filter(c=>{
-      const csvBase=(c['企業名']||'').split('(')[0].trim();
-      return csvBase===dbBase;
-    });
-    if(!matched.length)return;
-    const ids=new Set(matched.map(c=>c['企業ID']));
-    const matchedApps=appRows.filter(r=>ids.has(r['企業ID']));
+
+    let matchedApps=[];
+    if(dbId){
+      // ★ 企業IDで直接突合（最も正確）
+      matchedApps=appRows.filter(r=>r['企業ID']===dbId);
+    } else {
+      // 企業IDがない場合はベース名でフォールバック
+      const dbBase=dbName.split('(')[0].trim();
+      const map=Object.keys(contractRows2).length>0?contractRows2:contractMap;
+      const matched=Object.values(map).filter(c=>{
+        const csvBase=(c['企業名']||'').split('(')[0].trim();
+        return csvBase===dbBase;
+      });
+      const ids=new Set(matched.map(c=>c['企業ID']));
+      matchedApps=appRows.filter(r=>ids.has(r['企業ID']));
+    }
+
+    if(!matchedApps.length)return;
     const applyCount=matchedApps.length;
     const hireCount=matchedApps.filter(r=>r['ステータス']==='入社').length;
     const salesCount={};
     matchedApps.forEach(r=>{const s=r['営業担当']||'';if(!AGENT_CODES.has(s)){salesCount[s]=(salesCount[s]||0)+1;}});
     const topSalesPerson=Object.entries(salesCount).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
-    results.push({company,dbName,applyCount,hireCount,topSalesPerson,rowIndex:company._rowIndex,ids:[...ids]});
+    results.push({company,dbName,applyCount,hireCount,topSalesPerson,
+      contractId:dbId,rowIndex:company._rowIndex});
   });
   csvImportData=results;
 
@@ -1356,7 +1362,7 @@ function runMatching(){
   preview.style.display='block';
   const totalApps=results.reduce((s,r)=>s+r.applyCount,0);
   const totalHires=results.reduce((s,r)=>s+r.hireCount,0);
-  summary.innerHTML='<strong>'+results.length+'社</strong>にマッチ（応募 <strong>'+totalApps+'件</strong>・入社 <strong>'+totalHires+'名</strong>）';
+  summary.innerHTML='CSVから <strong>'+appRows.length.toLocaleString()+'件</strong> の応募データを読み込み、<strong>'+results.length+'社</strong>にマッチしました（うち入社 <strong>'+totalHires+'名</strong>）';
   list.innerHTML=results.map(r=>
     '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:0.5px solid rgba(0,0,0,0.06)">'+
     '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.dbName+'</div>'+
@@ -1370,13 +1376,27 @@ async function applyCSVImport(){
   if(!csvImportData.length){showToast('インポートするデータがありません');return;}
   showLoader(true);
   document.getElementById('csv-apply-btn').disabled=true;
+
+  const CHUNK=50;
   let success=0,fail=0;
-  for(const r of csvImportData){
+  for(let i=0;i<csvImportData.length;i+=CHUNK){
+    const chunk=csvImportData.slice(i,i+CHUNK);
+    const items=chunk.map(r=>({
+      rowIndex:r.rowIndex,
+      applyCount:r.applyCount,
+      hireCount:r.hireCount,
+      salesPerson:r.topSalesPerson||'',
+      contractId:r.contractId||'',
+    }));
     try{
-      const j=await gasGet({action:'updateApply',rowIndex:r.rowIndex,applyCount:r.applyCount,hireCount:r.hireCount,salesPerson:r.topSalesPerson});
-      if(j.ok)success++;else fail++;
-    }catch(e){fail++;}
+      const url=GAS_URL+'?action=bulkUpdateApply&itemsJSON='+encodeURIComponent(JSON.stringify(items));
+      const resp=await fetch(url);
+      const j=await resp.json();
+      if(j.ok) success+=j.count||chunk.length;
+      else fail+=chunk.length;
+    }catch(e){fail+=chunk.length;}
   }
+
   showLoader(false);
   document.getElementById('csv-apply-btn').disabled=false;
   showToast('✓ '+success+'社を更新しました'+(fail?'（'+fail+'社失敗）':''));
