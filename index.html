@@ -1287,13 +1287,21 @@ function handleContractFile2(file){
   if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
-    const rows=parseCSV(e.target.result);
+    const bytes=new Uint8Array(e.target.result);
+    let text;
+    if(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+      text=new TextDecoder('utf-8').decode(bytes.slice(3));
+    } else {
+      try{text=new TextDecoder('shift-jis').decode(bytes);}
+      catch(e){text=new TextDecoder('utf-8').decode(bytes);}
+    }
+    const rows=parseCSV(text,['企業ID','企業名','プラン','年間掲載費','契約開始日','契約終了日','所在地','エリア']);
     contractRows2={};
     rows.forEach(r=>{if(r['企業ID'])contractRows2[r['企業ID']]=r;});
     document.getElementById('contract-file-label2').textContent='✅ '+rows.length+'社を読み込みました';
     if(appRows.length>0)runMatching();
   };
-  reader.readAsText(file,'UTF-8');
+  reader.readAsArrayBuffer(file);
 }
 
 // 応募CSV
@@ -1301,13 +1309,20 @@ function handleCsvFile(file){
   if(!file)return;
   const reader=new FileReader();
   reader.onload=e=>{
-    appRows=parseCSV(e.target.result).filter(r=>r['企業ID']&&r['ステータス']);
+    const bytes=new Uint8Array(e.target.result);
+    let text;
+    if(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+      text=new TextDecoder('utf-8').decode(bytes.slice(3));
+    } else {
+      try{text=new TextDecoder('shift-jis').decode(bytes);}
+      catch(e){text=new TextDecoder('utf-8').decode(bytes);}
+    }
+    appRows=parseCSV(text).filter(r=>r['企業ID']&&r['ステータス']);
     document.getElementById('app-file-label').textContent='✅ '+appRows.length+'件を読み込みました';
     if(Object.keys(contractRows2).length>0)runMatching();
-    // 契約企業CSVが未選択でも、contractMapがあれば使う
     else if(Object.keys(contractMap).length>0){contractRows2=contractMap;runMatching();}
   };
-  reader.readAsText(file,'UTF-8');
+  reader.readAsArrayBuffer(file);
 }
 
 function runMatching(){
