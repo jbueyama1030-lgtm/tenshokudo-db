@@ -1067,19 +1067,22 @@ function removeBOM(str){
   // \uFEFFが文字列内に残っていても除去
   return str.replace(/^\uFEFF/,'');
 }
-function parseCSV(text){
-  text=text.replace(/^\uFEFF/,'').replace(/\uFEFF/g,''); // BOM除去
-  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');   // 改行正規化
+function parseCSV(text, pickCols){
+  text=text.replace(/^\uFEFF/,'').replace(/\uFEFF/g,'');
+  text=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
   const lines=text.split('\n');
   const nonEmpty=lines.filter(l=>l.trim());
   if(!nonEmpty.length)return[];
-  const headers=nonEmpty[0].split(',').map(h=>h.trim());
-  console.log('CSV列名:', headers, '列数:', headers.length);
+  const allHeaders=nonEmpty[0].split(',').map(h=>h.trim());
+  // pickColsが指定されていれば必要列のインデックスだけ使う
+  const useHeaders=pickCols?allHeaders.filter(h=>pickCols.includes(h)):allHeaders;
+  const useIdx=useHeaders.map(h=>allHeaders.indexOf(h));
+  console.log('CSV列名:', useHeaders, '列数:', useHeaders.length);
   const result=[];
   for(let i=1;i<nonEmpty.length;i++){
     const vals=nonEmpty[i].split(',');
     const obj={};
-    headers.forEach((h,j)=>obj[h]=(vals[j]||'').trim());
+    useHeaders.forEach((h,j)=>obj[h]=(vals[useIdx[j]]||'').trim());
     if(Object.values(obj).some(v=>v)) result.push(obj);
   }
   console.log('parseCSV:', result.length,'行 / 1行目:', JSON.stringify(result[0]));
@@ -1089,14 +1092,27 @@ function parseCSV(text){
 // 契約企業CSVを選択 → 未登録企業を即検出
 function handleContractFile(file){
   if(!file)return;
-  // Blob→URL→fetch でUTF-8を確実に読み込む
-  const url=URL.createObjectURL(file);
-  fetch(url)
-    .then(r=>r.text())
-    .then(text=>{
-      URL.revokeObjectURL(url);
-      const rows=parseCSV(text);
-      console.log('parseCSV行数:', rows.length, '1行目:', rows[0]);
+  // Shift-JIS対応：FileReaderでcp932として読み込む
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const bytes=new Uint8Array(e.target.result);
+    // BOM確認してUTF-8かShift-JISか判断
+    let text;
+    if(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+      // UTF-8 BOM付き
+      text=new TextDecoder('utf-8').decode(bytes.slice(3));
+    } else if(bytes[0]===0xFF&&bytes[1]===0xFE){
+      // UTF-16 LE
+      text=new TextDecoder('utf-16le').decode(bytes.slice(2));
+    } else {
+      // Shift-JIS（CP932）として読む
+      try {
+        text=new TextDecoder('shift-jis').decode(bytes);
+      } catch(e) {
+        text=new TextDecoder('utf-8').decode(bytes);
+      }
+    }
+    const rows=parseCSV(text, ['企業ID','企業名','プラン','年間掲載費','契約開始日','契約終了日','所在地','エリア']);
 
     contractMap={};
     rows.forEach(r=>{if(r['企業ID'])contractMap[r['企業ID']]=r;});
@@ -1139,8 +1155,8 @@ function handleContractFile(file){
       '<span style="color:#888780;flex-shrink:0;margin-left:8px">'+(r['所在地']||r['エリア']||'')+' / '+(r['プラン']||'')+'</span>'+
       '</div>'
     ).join('')+(newCompanies.length>50?'<div style="padding:8px 14px;font-size:11px;color:#888780">他'+(newCompanies.length-50)+'社...</div>':'');
-    })
-    .catch(err=>{console.error('CSV読込エラー:',err);showToast('CSV読み込みに失敗しました');});
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 async function applyContractImport(){
