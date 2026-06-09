@@ -1304,7 +1304,7 @@ function handleContractFile2(file){
   reader.readAsArrayBuffer(file);
 }
 
-// 応募CSV
+// 応募CSV（UTF-8 BOM付き）
 function handleCsvFile(file){
   if(!file)return;
   const reader=new FileReader();
@@ -1312,10 +1312,11 @@ function handleCsvFile(file){
     const bytes=new Uint8Array(e.target.result);
     let text;
     if(bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){
+      // UTF-8 BOM付き
       text=new TextDecoder('utf-8').decode(bytes.slice(3));
     } else {
-      try{text=new TextDecoder('shift-jis').decode(bytes);}
-      catch(e){text=new TextDecoder('utf-8').decode(bytes);}
+      // BOMなし → UTF-8で試みる
+      text=new TextDecoder('utf-8').decode(bytes);
     }
     appRows=parseCSV(text).filter(r=>r['企業ID']&&r['ステータス']);
     document.getElementById('app-file-label').textContent='✅ '+appRows.length+'件を読み込みました';
