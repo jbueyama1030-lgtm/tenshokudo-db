@@ -1341,7 +1341,7 @@ function runMatching(){
     if(dbId){
       // 企業IDで直接突合
       matchedApps=appRows.filter(r=>r['企業ID']===dbId);
-    } else {
+    } else if(Object.keys(map).length>0){
       // IDがない → contractMapから企業名でIDを逆引き
       const dbBase=dbName.split('(')[0].trim();
       const matched=Object.values(map).filter(c=>{
@@ -1355,6 +1355,7 @@ function runMatching(){
       }
     }
 
+    // 応募が0件でもIDがあれば更新対象に含める（IDを保存するため）
     if(!matchedApps.length&&!resolvedId)return;
     const applyCount=matchedApps.length;
     const hireCount=matchedApps.filter(r=>r['ステータス']==='入社').length;
