@@ -1388,7 +1388,7 @@ async function applyCSVImport(){
   for(let i=0;i<csvImportData.length;i+=CHUNK){
     const chunk=csvImportData.slice(i,i+CHUNK);
     const promises=chunk.map(r=>
-      gasGet({action:'updateApply',rowIndex:r.rowIndex,applyCount:r.applyCount,hireCount:r.hireCount,salesPerson:r.topSalesPerson||''})
+      gasGet({action:'updateApply',rowIndex:r.rowIndex,applyCount:r.applyCount,hireCount:r.hireCount,salesPerson:r.topSalesPerson||'',contractId:r.contractId||''})
         .then(j=>{if(j.ok)success++;else fail++;})
         .catch(()=>fail++)
     );
