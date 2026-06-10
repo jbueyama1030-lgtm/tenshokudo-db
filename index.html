@@ -1331,7 +1331,7 @@ function runMatching(){
   const map=Object.keys(contractRows2).length>0?contractRows2:contractMap;
   const results=[];
   companiesData.forEach(company=>{
-    const dbId=(company['企業ID']||'').trim();
+    const dbId=String(company['企業ID']||'').trim();
     const dbName=company['会社名']||'';
     if(!dbName)return;
 
@@ -1340,7 +1340,7 @@ function runMatching(){
 
     if(dbId){
       // 企業IDで直接突合
-      matchedApps=appRows.filter(r=>r['企業ID']===dbId);
+      matchedApps=appRows.filter(r=>String(r['企業ID']||'')=== dbId);
     } else if(Object.keys(map).length>0){
       // IDがない → contractMapから企業名でIDを逆引き
       const dbBase=dbName.split('(')[0].trim();
