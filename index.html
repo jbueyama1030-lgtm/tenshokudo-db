@@ -347,11 +347,30 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
   </div>
 
   <div class="screen" id="screen-form">
-    <div class="progress-bar"><div class="progress-fill" id="form-progress" style="width:25%"></div></div>
-    <div style="padding:12px 0 4px;display:flex;justify-content:space-between;align-items:center">
-      <div style="font-size:13px;font-weight:500" id="form-step-title">企業基本情報</div>
-      <div style="font-size:12px;color:#888780" id="form-step-num">1 / 4</div>
+    <!-- ステップインジケーター -->
+    <div style="background:#fff;border-bottom:0.5px solid rgba(0,0,0,0.1);padding:12px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <button class="btn" onclick="cancelForm()" style="font-size:12px;padding:5px 12px">
+          <i class="ti ti-arrow-left"></i> キャンセル
+        </button>
+        <div style="font-size:13px;font-weight:500" id="form-step-title">企業基本情報</div>
+        <div style="font-size:12px;color:#888780" id="form-step-num">1 / 4</div>
+      </div>
+      <!-- ステップドット -->
+      <div style="display:flex;gap:6px;align-items:center">
+        <div id="sdot1" style="flex:1;height:4px;border-radius:2px;background:#534AB7;transition:all 0.2s"></div>
+        <div id="sdot2" style="flex:1;height:4px;border-radius:2px;background:#E5E3DC;transition:all 0.2s"></div>
+        <div id="sdot3" style="flex:1;height:4px;border-radius:2px;background:#E5E3DC;transition:all 0.2s"></div>
+        <div id="sdot4" style="flex:1;height:4px;border-radius:2px;background:#E5E3DC;transition:all 0.2s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px">
+        <div style="font-size:10px;color:#534AB7;font-weight:500">基本情報</div>
+        <div style="font-size:10px;color:#888780" id="slabel2">採用状況</div>
+        <div style="font-size:10px;color:#888780" id="slabel3">採用コスト</div>
+        <div style="font-size:10px;color:#888780" id="slabel4">営業メモ</div>
+      </div>
     </div>
+    <div class="progress-bar" style="display:none"><div class="progress-fill" id="form-progress" style="width:25%"></div></div>
 
     <div id="fstep1">
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-building"></i> 企業基本情報</div></div>
@@ -480,11 +499,13 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div class="card-body">
           <div class="form-group"><label class="label">掲載型 採用単価<span class="required">*</span></label><div class="unit-input"><input type="number" id="f-cost-ad" placeholder="0" min="0"><span class="unit">円</span></div></div>
           <div class="form-group"><label class="label">人材紹介 採用単価<span class="required">*</span></label><div class="unit-input"><input type="number" id="f-cost-ref" placeholder="0" min="0"><span class="unit">円</span></div></div>
+          <div class="form-group"><label class="label">競合媒体の採用単価（参考）<span style="font-size:10px;color:#888780;margin-left:4px">AI提案用</span></label><div class="unit-input"><input type="number" id="f-competitor-cost" placeholder="0" min="0"><span class="unit">円</span></div></div>
           <div style="height:0.5px;background:rgba(0,0,0,0.08);margin:4px 0 12px"></div>
           <div class="row2">
             <div class="form-group"><label class="label">転職道経由 応募数</label><div class="unit-input"><input type="number" id="f-apply-count" placeholder="0" min="0"><span class="unit">件</span></div></div>
             <div class="form-group"><label class="label">転職道経由 入社数</label><div class="unit-input"><input type="number" id="f-hire-count" placeholder="0" min="0"><span class="unit">名</span></div></div>
           </div>
+          <div class="form-group"><label class="label">ドライバー充足率<span style="font-size:10px;color:#888780;margin-left:4px">AI提案用（目標比）</span></label><div class="unit-input"><input type="number" id="f-driver-rate" placeholder="例: 80" min="0" max="100"><span class="unit">%</span></div></div>
         </div>
       </div>
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-news"></i> 利用媒体</div></div>
@@ -512,6 +533,14 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
     <div id="fstep4" style="display:none">
       <div class="card"><div class="card-head"><div class="card-title"><i class="ti ti-notes"></i> 商談メモ</div></div>
         <div class="card-body">
+          <div class="row2">
+            <div class="form-group"><label class="label">先方担当者名</label><input type="text" id="f-contact2" placeholder="例: 山田 太郎"></div>
+            <div class="form-group"><label class="label">役職<span style="font-size:10px;color:#888780;margin-left:4px">AI提案用</span></label><input type="text" id="f-contact-role" placeholder="例: 採用部長"></div>
+          </div>
+          <div class="row2">
+            <div class="form-group"><label class="label">契約開始日</label><input type="date" id="f-start-date"></div>
+            <div class="form-group"><label class="label">契約更新日<span style="font-size:10px;color:#888780;margin-left:4px">AI提案用</span></label><input type="date" id="f-renewal-date"></div>
+          </div>
           <div class="form-group"><label class="label">商談内容・反応</label><textarea id="f-memo" placeholder="例: 採用に困っており転職道に興味あり。" style="min-height:96px"></textarea></div>
           <div class="form-group"><label class="label">温度感<span class="required">*</span></label>
             <div class="tag-group" id="heat-tags">
@@ -849,6 +878,11 @@ function showCompany(idx){
   const c=companiesData[idx];if(!c)return;
   goScreen('company');
   document.getElementById('company-detail').innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <button class="btn" onclick="goBack()" style="font-size:12px;padding:5px 12px">
+        <i class="ti ti-arrow-left"></i> 戻る
+      </button>
+    </div>
     <div style="background:#fff;border:0.5px solid rgba(0,0,0,0.12);border-radius:12px;padding:14px;margin-bottom:12px;display:flex;gap:12px;align-items:flex-start">
       <div style="width:46px;height:46px;border-radius:10px;background:#EEEDFE;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;color:#3C3489;flex-shrink:0">${(c['会社名']||'').slice(0,2)}</div>
       <div style="flex:1">
@@ -899,8 +933,21 @@ function showCompany(idx){
     </div>`;
 }
 
-// 企業削除
-async function deleteCompany(idx){
+// 前の画面に戻る
+function goBack(){
+  if(currentSalesTab&&currentSalesTab!=='all'){
+    goScreen('mypage');
+    renderMyPage(currentSalesTab);
+  } else if(currentPref){
+    goScreen('pref');
+    clickPref(currentPref);
+  } else if(currentArea){
+    goScreen('area');
+    clickArea(currentArea);
+  } else {
+    goScreen('home');
+  }
+}
   const c=companiesData[idx];if(!c)return;
   if(!c._rowIndex){showToast('行番号が取得できません。GASをv3に更新してください。');return;}
   // 確認ダイアログ
@@ -1024,7 +1071,34 @@ function startForm(){
   document.getElementById('haisha-quick').innerHTML=DEFAULT_HAISHA.map(n=>`<button onclick="quickAdd('${n}')" style="padding:5px 10px;border:0.5px solid rgba(0,0,0,0.15);border-radius:20px;font-size:12px;cursor:pointer;background:#fff;color:#888780;font-family:inherit">${n}</button>`).join('');
   document.getElementById('haisha-new').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addHaisha();}});
 }
-function updateFormStep(){for(let i=1;i<=4;i++)document.getElementById('fstep'+i).style.display=i===formStep?'block':'none';document.getElementById('form-progress').style.width=(formStep/4*100)+'%';document.getElementById('form-step-title').textContent=['企業基本情報','採用状況','採用コスト','営業メモ'][formStep-1];document.getElementById('form-step-num').textContent=formStep+' / 4';window.scrollTo(0,0);}
+function cancelForm(){
+  if(confirm('入力内容を破棄して戻りますか？')){
+    resetForm();
+    // 元の画面に戻る
+    if(currentSalesTab&&currentSalesTab!=='all') goScreen('mypage');
+    else if(currentPref) goScreen('pref');
+    else goScreen('home');
+  }
+}
+
+function updateFormStep(){
+  for(let i=1;i<=4;i++) document.getElementById('fstep'+i).style.display=i===formStep?'block':'none';
+  const titles=['企業基本情報','採用状況','採用コスト','営業メモ'];
+  const labels=['基本情報','採用状況','採用コスト','営業メモ'];
+  document.getElementById('form-step-title').textContent=titles[formStep-1];
+  document.getElementById('form-step-num').textContent=formStep+' / 4';
+  // ステップドット更新
+  for(let i=1;i<=4;i++){
+    const dot=document.getElementById('sdot'+i);
+    const label=document.getElementById('slabel'+i);
+    if(dot) dot.style.background=i<=formStep?'#534AB7':'#E5E3DC';
+    if(label){
+      label.style.color=i===formStep?'#534AB7':i<formStep?'#3C3489':'#888780';
+      label.style.fontWeight=i===formStep?'600':'400';
+    }
+  }
+  window.scrollTo(0,0);
+}
 function fNext(){if(formStep<4){formStep++;updateFormStep();}}
 function fPrev(){if(formStep>1){formStep--;updateFormStep();}}
 function renderHaisha(){
@@ -1080,6 +1154,9 @@ async function submitForm(){
     shifts:getChecked('shift-checks'),ageGroup:getMultiTag('age-tags'),
     license:fVal('f-license'),costAd:fVal('f-cost-ad'),costRef:fVal('f-cost-ref'),
     applyCount:fVal('f-apply-count'),hireCount:fVal('f-hire-count'),
+    competitorCost:fVal('f-competitor-cost'),driverRate:fVal('f-driver-rate'),
+    renewalDate:fVal('f-renewal-date'),contactRole:fVal('f-contact-role'),
+    startDate:fVal('f-start-date'),
     feeRate:fVal('f-fee-rate'),media:getChecked('media-checks'),
     monthlyAd:fVal('f-monthly-ad'),pastMedia:fVal('f-past-media'),
     memo:fVal('f-memo'),heat:getActiveTag('heat-tags'),
