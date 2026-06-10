@@ -1328,6 +1328,7 @@ function handleCsvFile(file){
 }
 
 function runMatching(){
+  const map=Object.keys(contractRows2).length>0?contractRows2:contractMap;
   const results=[];
   companiesData.forEach(company=>{
     const dbId=(company['企業ID']||'').trim();
@@ -1335,29 +1336,34 @@ function runMatching(){
     if(!dbName)return;
 
     let matchedApps=[];
+    let resolvedId=dbId;
+
     if(dbId){
-      // ★ 企業IDで直接突合（最も正確）
+      // 企業IDで直接突合
       matchedApps=appRows.filter(r=>r['企業ID']===dbId);
     } else {
-      // 企業IDがない場合はベース名でフォールバック
+      // IDがない → contractMapから企業名でIDを逆引き
       const dbBase=dbName.split('(')[0].trim();
-      const map=Object.keys(contractRows2).length>0?contractRows2:contractMap;
       const matched=Object.values(map).filter(c=>{
         const csvBase=(c['企業名']||'').split('(')[0].trim();
-        return csvBase===dbBase;
+        return c['企業名']===dbName || csvBase===dbBase;
       });
-      const ids=new Set(matched.map(c=>c['企業ID']));
-      matchedApps=appRows.filter(r=>ids.has(r['企業ID']));
+      if(matched.length>0){
+        resolvedId=matched[0]['企業ID']||'';
+        const ids=new Set(matched.map(c=>c['企業ID']));
+        matchedApps=appRows.filter(r=>ids.has(r['企業ID']));
+      }
     }
 
-    if(!matchedApps.length)return;
+    if(!matchedApps.length&&!resolvedId)return;
     const applyCount=matchedApps.length;
     const hireCount=matchedApps.filter(r=>r['ステータス']==='入社').length;
     const salesCount={};
     matchedApps.forEach(r=>{const s=r['営業担当']||'';if(!AGENT_CODES.has(s)){salesCount[s]=(salesCount[s]||0)+1;}});
     const topSalesPerson=Object.entries(salesCount).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
+    if(!applyCount&&!resolvedId)return;
     results.push({company,dbName,applyCount,hireCount,topSalesPerson,
-      contractId:dbId,rowIndex:company._rowIndex});
+      contractId:resolvedId,rowIndex:company._rowIndex});
   });
   csvImportData=results;
 
