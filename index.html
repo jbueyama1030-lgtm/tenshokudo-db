@@ -364,7 +364,7 @@ select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/
         <div id="sdot4" style="flex:1;height:4px;border-radius:2px;background:#E5E3DC;transition:all 0.2s"></div>
       </div>
       <div style="display:flex;justify-content:space-between;margin-top:4px">
-        <div style="font-size:10px;color:#534AB7;font-weight:500">基本情報</div>
+        <div style="font-size:10px;color:#534AB7;font-weight:600" id="slabel1">基本情報</div>
         <div style="font-size:10px;color:#888780" id="slabel2">採用状況</div>
         <div style="font-size:10px;color:#888780" id="slabel3">採用コスト</div>
         <div style="font-size:10px;color:#888780" id="slabel4">営業メモ</div>
@@ -948,6 +948,9 @@ function goBack(){
     goScreen('home');
   }
 }
+
+// 企業削除
+async function deleteCompany(idx){
   const c=companiesData[idx];if(!c)return;
   if(!c._rowIndex){showToast('行番号が取得できません。GASをv3に更新してください。');return;}
   // 確認ダイアログ
