@@ -18,9 +18,7 @@ export default async function DashboardPage() {
             
               href="/api/auth/signout"
               className="text-sm text-red-600 hover:text-red-700"
-            >
-              ログアウト
-            </a>
+            >ログアウト</a>
           </div>
         </div>
       </header>
