@@ -1,0 +1,139 @@
+"use client"
+
+import { useEffect, useState } from "react"
+
+type User = {
+  id: string
+  name: string
+  email: string
+  role: string
+  createdAt: string
+}
+
+export default function UsersPage() {
+  const [users, setUsers] = useState<User[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "sales" })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  const fetchUsers = async () => {
+    const res = await fetch("/api/users")
+    const data = await res.json()
+    setUsers(data)
+  }
+
+  useEffect(() => { fetchUsers() }, [])
+
+  const handleSubmit = async () => {
+    if (!form.name || !form.email || !form.password) {
+      setError("全項目を入力してください")
+      return
+    }
+    setLoading(true)
+    setError("")
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    })
+    if (res.ok) {
+      setForm({ name: "", email: "", password: "", role: "sales" })
+      setShowForm(false)
+      fetchUsers()
+    } else {
+      const data = await res.json()
+      setError(data.error ?? "エラーが発生しました")
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <aside className="w-48 min-w-48 bg-[#0C1A2E] flex flex-col">
+        <div className="px-5 py-5 border-b border-white/10">
+          <div className="text-sm font-semibold text-white">🚕 転職道</div>
+          <div className="text-xs text-white/30 mt-0.5">営業DB</div>
+        </div>
+        <nav className="flex-1 py-4">
+          <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
+          <a href="/dashboard" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">📊 ダッシュボード</a>
+          <a href="/companies" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">🏢 企業一覧</a>
+          <a href="/companies/new" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">➕ 企業追加</a>
+          <a href="/users" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white border-l-2 border-[#378ADD] bg-[#378ADD]/10">👥 ユーザー管理</a>
+        </nav>
+        <div className="px-5 py-4 border-t border-white/10">
+          <a href="/api/auth/signout" className="text-[10px] text-white/30 hover:text-white/60">ログアウト</a>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-auto">
+        <div className="px-8 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-xl font-bold text-gray-800">ユーザー管理</h1>
+            <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+              ＋ ユーザー追加
+            </button>
+          </div>
+
+          {showForm && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">新規ユーザー追加</h2>
+              {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">名前</label>
+                  <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例：山田太郎" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">メールアドレス</label>
+                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例：yamada@tenshokudo.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">パスワード</label>
+                  <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="8文字以上推奨" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">権限</label>
+                  <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="sales">営業</option>
+                    <option value="admin">管理者</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+                <button onClick={handleSubmit} disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{loading ? "登録中..." : "登録する"}</button>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">名前</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">メールアドレス</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">権限</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">登録日</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {users.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{user.name}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
+                    <td className="px-4 py-3">
+                      <span className={"text-xs px-2 py-1 rounded-full font-medium " + (user.role === "admin" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-600")}>{user.role === "admin" ? "管理者" : "営業"}</span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{new Date(user.createdAt).toLocaleDateString("ja-JP")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
