@@ -1,6 +1,7 @@
 import NextAuth, { DefaultSession } from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { PrismaClient } from "@prisma/client"
+import bcrypt from "bcryptjs"          // ← 追加
 
 declare module "next-auth" {
   interface Session {
@@ -28,6 +29,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         })
         
         if (!user) return null
+
+        // ← 追加：パスワード検証
+        const isValid = await bcrypt.compare(
+          credentials.password as string,
+          user.password
+        )
+        if (!isValid) return null
         
         return {
           id: user.id,
@@ -38,6 +46,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
     })
   ],
+  // callbacks は変更なし
   callbacks: {
     async session({ session, token }) {
       if (token && session.user) {
