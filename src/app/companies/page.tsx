@@ -120,7 +120,7 @@ export default async function CompaniesPage({
                   {companies.map((company) => (
                     <tr key={company.id} className="hover:bg-gray-50 cursor-pointer">
                       <td className="px-4 py-3 text-sm text-gray-500">{company.companyId ?? "-"}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{company.name}</td>
+                     <td className="px-4 py-3 text-sm font-medium text-gray-900"><a href={`/companies/${company.id}`} className="hover:text-blue-600 hover:underline">{company.name}</a></td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[company.status] ?? "bg-gray-100 text-gray-600"}`}>{STATUS_LABELS[company.status] ?? company.status}</span>
                       </td>
@@ -134,8 +134,3 @@ export default async function CompaniesPage({
               </table>
             </div>
           )}
-        </div>
-      </main>
-    </div>
-  )
-}
