@@ -133,4 +133,7 @@ export default async function CompaniesPage({
                 </tbody>
               </table>
             </div>
-          )}
+          </main>
+    </div>
+  )
+}
