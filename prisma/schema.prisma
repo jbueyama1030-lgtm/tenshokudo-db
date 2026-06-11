@@ -8,21 +8,38 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String                    
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
   name      String
-  role      String   @default("sales")
-  createdAt DateTime @default(now())
+  role      String    @default("sales")
+  createdAt DateTime  @default(now())
   companies Company[]
 }
 
 model Company {
-  id          String   @id @default(cuid())
-  name        String
-  status      String   @default("approaching")
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  companyId     String?  @unique  // 企業ID（独自番号）
+  name          String            // 会社名
+  status        String   @default("approaching") // contracted / approaching / delisted
+  userId        String            // 担当者
+  user          User     @relation(fields: [userId], references: [id])
+
+  // 採用情報
+  persona       String[] // 採用ペルソナ（多選択）例：["20代","30代"]
+  media         String?  // 掲載媒体
+
+  // 実績
+  applyCount    Int      @default(0) // 転職道経由の応募数
+  hireCount     Int      @default(0) // 転職道経由の入社数
+
+  // 連絡先
+  phone         String?  // 電話番号
+  address       String?  // 住所
+
+  // メモ
+  memo          String?  // 備考
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
