@@ -1,4 +1,6 @@
-import { DefaultSession } from "next-auth"
+import NextAuth, { DefaultSession } from "next-auth"
+import Credentials from "next-auth/providers/credentials"
+import { PrismaClient } from "@prisma/client"
 
 declare module "next-auth" {
   interface Session {
@@ -8,10 +10,6 @@ declare module "next-auth" {
     } & DefaultSession["user"]
   }
 }
-
-import NextAuth from "next-auth"
-import Credentials from "next-auth/providers/credentials"
-import { PrismaClient } from "@prisma/client"
 
 const prisma = new PrismaClient()
 
@@ -31,7 +29,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         
         if (!user) return null
         
-        // 仮実装：パスワードチェックは後で追加
         return {
           id: user.id,
           email: user.email,
