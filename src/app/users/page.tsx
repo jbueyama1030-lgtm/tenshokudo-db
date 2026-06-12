@@ -1,3 +1,4 @@
+import Sidebar from "@/components/Sidebar"
 "use client"
 
 import { useEffect, useState } from "react"
@@ -63,22 +64,7 @@ export default function UsersPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <aside className="w-48 min-w-48 bg-[#0C1A2E] flex flex-col">
-        <div className="px-5 py-5 border-b border-white/10">
-          <div className="text-sm font-semibold text-white">🚕 転職道</div>
-          <div className="text-xs text-white/30 mt-0.5">営業DB</div>
-        </div>
-        <nav className="flex-1 py-4">
-          <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
-          <a href="/dashboard" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">📊 ダッシュボード</a>
-          <a href="/companies" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">🏢 企業一覧</a>
-          <a href="/companies/new" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">➕ 企業追加</a>
-          <a href="/users" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white border-l-2 border-[#378ADD] bg-[#378ADD]/10">👥 ユーザー管理</a>
-        </nav>
-        <div className="px-5 py-4 border-t border-white/10">
-          <a href="/api/auth/signout" className="text-[10px] text-white/30 hover:text-white/60">ログアウト</a>
-        </div>
-      </aside>
+      <Sidebar />
 
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6">
