@@ -39,7 +39,11 @@ model Company {
 
   // メモ
   memo          String?  // 備考
-
+// 商談管理
+  temperature     String?  // hot / warm / cold
+  negotiationMemo String?  // 商談メモ
+  nextAction      String?  // 次回アクション
+  nextActionDate  DateTime? // 次回アクション日
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
