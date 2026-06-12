@@ -20,16 +20,11 @@ export default function Sidebar({ userName }: { userName?: string }) {
         <div className="text-sm font-semibold text-white">🚕 転職道</div>
         <div className="text-xs text-white/30 mt-0.5">営業DB</div>
       </div>
-      <nav className="flex-1 py-4">
+      <nav className="flex-1 py-4 overflow-y-auto">
         <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
         {links.map(link => {
-          const isActive =
-         pathname === link.href ||
-         (pathname.startsWith(link.href + "/") &&
-           link.href !== "/companies" &&
-           link.href !== "/companies/new" &&
-           link.href !== "/companies/import" &&
-           link.href !== "/companies/import-hearing")
+         const isActive = pathname === link.href ||
+           (link.href === "/companies" ? false : pathname.startsWith(link.href + "/"))
           return (
             <a
               key={link.href}
