@@ -10,12 +10,18 @@ type User = {
   createdAt: string
 }
 
+function generatePassword() {
+  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$"
+  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "sales" })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [generatedPassword, setGeneratedPassword] = useState("")
 
   const fetchUsers = async () => {
     const res = await fetch("/api/users")
@@ -24,6 +30,12 @@ export default function UsersPage() {
   }
 
   useEffect(() => { fetchUsers() }, [])
+
+  const handleGeneratePassword = () => {
+    const pwd = generatePassword()
+    setForm(f => ({ ...f, password: pwd }))
+    setGeneratedPassword(pwd)
+  }
 
   const handleSubmit = async () => {
     if (!form.name || !form.email || !form.password) {
@@ -40,6 +52,7 @@ export default function UsersPage() {
     if (res.ok) {
       setForm({ name: "", email: "", password: "", role: "sales" })
       setShowForm(false)
+      setGeneratedPassword("")
       fetchUsers()
     } else {
       const data = await res.json()
@@ -71,7 +84,7 @@ export default function UsersPage() {
         <div className="px-8 py-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-xl font-bold text-gray-800">ユーザー管理</h1>
-            <button onClick={() => setShowForm(!showForm)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            <button onClick={() => { setShowForm(!showForm); setGeneratedPassword("") }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
               ＋ ユーザー追加
             </button>
           </div>
@@ -91,7 +104,18 @@ export default function UsersPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">パスワード</label>
-                  <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="8文字以上推奨" />
+                  <div className="flex gap-2">
+                    <input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="パスワード" />
+                    <button type="button" onClick={handleGeneratePassword} className="px-3 py-2 text-xs bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 whitespace-nowrap">
+                      自動生成
+                    </button>
+                  </div>
+                  {generatedPassword && (
+                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-xs text-yellow-800 font-medium">⚠️ このパスワードをメモしてください：</p>
+                      <p className="text-sm font-mono font-bold text-yellow-900 mt-1 select-all">{generatedPassword}</p>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">権限</label>
@@ -102,7 +126,7 @@ export default function UsersPage() {
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
-                <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+                <button onClick={() => { setShowForm(false); setGeneratedPassword("") }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
                 <button onClick={handleSubmit} disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{loading ? "登録中..." : "登録する"}</button>
               </div>
             </div>
