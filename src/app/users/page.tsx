@@ -22,6 +22,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [generatedPassword, setGeneratedPassword] = useState("")
+  const [userName, setUserName] = useState("")
 
   const fetchUsers = async () => {
     const res = await fetch("/api/users")
@@ -29,7 +30,10 @@ export default function UsersPage() {
     setUsers(data)
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => {
+    fetchUsers()
+    fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
+  }, [])
 
   const handleGeneratePassword = () => {
     const pwd = generatePassword()
@@ -63,7 +67,7 @@ export default function UsersPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar userName={userName} />
 
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6">

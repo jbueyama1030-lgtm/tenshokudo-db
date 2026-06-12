@@ -3,7 +3,6 @@ import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 
-
 type Company = {
   id: string
   companyId: string | null
@@ -46,6 +45,7 @@ export default function CompanyDetailPage() {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<Partial<Company>>({})
   const [loading, setLoading] = useState(false)
+  const [userName, setUserName] = useState("")
 
   useEffect(() => {
     fetch(`/api/companies/${id}`).then(r => r.json()).then(data => {
@@ -53,6 +53,7 @@ export default function CompanyDetailPage() {
       setForm(data)
     })
     fetch("/api/users").then(r => r.json()).then(setUsers)
+    fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
   }, [id])
 
   const handleSave = async () => {
@@ -80,7 +81,7 @@ export default function CompanyDetailPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar userName={userName} />
 
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6 max-w-4xl">

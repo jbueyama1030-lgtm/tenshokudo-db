@@ -1,6 +1,6 @@
 "use client"
 import Sidebar from "@/components/Sidebar"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 export default function ImportPage() {
   const [preview, setPreview] = useState<string[][]>([])
@@ -8,6 +8,11 @@ export default function ImportPage() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ success: number; skip: number; error: number } | null>(null)
   const [error, setError] = useState("")
+  const [userName, setUserName] = useState("")
+
+  useEffect(() => {
+    fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
+  }, [])
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -19,7 +24,6 @@ export default function ImportPage() {
     const reader = new FileReader()
     reader.onload = (ev) => {
       const buffer = ev.target?.result as ArrayBuffer
-      // Shift-JIS デコード
       const decoder = new TextDecoder("shift-jis")
       const text = decoder.decode(buffer)
       const lines = text.split(/\r?\n/).filter(line => line.trim() && line.replace(/,/g, "").trim())
@@ -33,7 +37,7 @@ export default function ImportPage() {
     if (preview.length < 2) return
     setLoading(true)
     setError("")
-    const dataRows = preview.slice(1) // ヘッダー除く
+    const dataRows = preview.slice(1)
     const res = await fetch("/api/companies/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -52,7 +56,7 @@ export default function ImportPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <Sidebar userName={userName} />
 
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6 max-w-5xl">

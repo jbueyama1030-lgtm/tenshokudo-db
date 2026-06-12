@@ -1,98 +1,173 @@
+"use client"
 import Sidebar from "@/components/Sidebar"
-import { auth } from "@/auth"
-import { redirect } from "next/navigation"
-import { PrismaClient } from "@prisma/client"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 
-const prisma = new PrismaClient()
+type User = { id: string; name: string }
 
-const STATUS_LABELS: Record<string, string> = {
-  contracted: "✅ 契約中",
-  approaching: "📋 アプローチ中",
-  delisted: "📉 掲載落ち",
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  contracted: "bg-green-100 text-green-800",
-  approaching: "bg-blue-100 text-blue-800",
-  delisted: "bg-gray-100 text-gray-600",
-}
-
-export default async function CompaniesPage({ searchParams }: { searchParams: Promise<{ user?: string; status?: string }> }) {
-  const session = await auth()
-  if (!session) redirect("/login")
-  const params = await searchParams
-  const selectedUser = params.user ?? "all"
-  const selectedStatus = params.status ?? "all"
-  const users = await prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
-  const companies = await prisma.company.findMany({
-    where: {
-      ...(selectedUser !== "all" ? { userId: selectedUser } : {}),
-      ...(selectedStatus !== "all" ? { status: selectedStatus } : {}),
-    },
-    include: { user: { select: { id: true, name: true } } },
-    orderBy: { updatedAt: "desc" },
+export default function NewCompanyPage() {
+  const router = useRouter()
+  const [users, setUsers] = useState<User[]>([])
+  const [userName, setUserName] = useState("")
+  const [form, setForm] = useState({
+    name: "",
+    companyId: "",
+    status: "approaching",
+    userId: "",
+    phone: "",
+    address: "",
+    media: "",
+    memo: "",
+    temperature: "",
+    negotiationMemo: "",
+    nextAction: "",
+    nextActionDate: "",
+    applyCount: 0,
+    hireCount: 0,
   })
-  const statusTabs = [
-    { key: "all", label: "すべて" },
-    { key: "contracted", label: "✅ 契約中" },
-    { key: "approaching", label: "📋 アプローチ中" },
-    { key: "delisted", label: "📉 掲載落ち" },
-  ]
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    fetch("/api/users").then(r => r.json()).then((data: User[]) => {
+      setUsers(data)
+      if (data.length > 0) setForm(f => ({ ...f, userId: data[0].id }))
+    })
+    fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
+  }, [])
+
+  const handleSubmit = async () => {
+    if (!form.name) { setError("企業名は必須です"); return }
+    if (!form.userId) { setError("担当者を選択してください"); return }
+    setLoading(true)
+    setError("")
+    const res = await fetch("/api/companies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      router.push(`/companies/${data.id}`)
+    } else {
+      const data = await res.json()
+      setError(data.error ?? "エラーが発生しました")
+    }
+    setLoading(false)
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
-    <Sidebar userName={session.user?.name ?? ""} />
+      <Sidebar userName={userName} />
+
       <main className="flex-1 overflow-auto">
-        <div className="px-8 py-6">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-xl font-bold text-gray-800">企業一覧</h1>
-            <a href="/companies/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">＋ 企業追加</a>
+        <div className="px-8 py-6 max-w-4xl">
+          <div className="flex items-center gap-3 mb-6">
+            <a href="/companies" className="text-sm text-gray-400 hover:text-gray-600">← 企業一覧</a>
+            <span className="text-gray-300">/</span>
+            <h1 className="text-xl font-bold text-gray-800">企業追加</h1>
           </div>
-          <div className="flex gap-1 mb-4 border-b border-gray-200">
-            <a href={"/companies?status=" + selectedStatus} className={"px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors " + (selectedUser === "all" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700")}>全員</a>
-            {users.map((user) => (
-              <a key={user.id} href={"/companies?user=" + user.id + "&status=" + selectedStatus} className={"px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors " + (selectedUser === user.id ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700")}>{user.name}</a>
-            ))}
-          </div>
-          <div className="flex gap-2 mb-5">
-            {statusTabs.map((tab) => (
-              <a key={tab.key} href={"/companies?" + (selectedUser !== "all" ? "user=" + selectedUser + "&" : "") + "status=" + tab.key} className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " + (selectedStatus === tab.key ? "bg-blue-600 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-blue-400")}>{tab.label}</a>
-            ))}
-          </div>
-          {companies.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-              <p className="text-gray-400 text-lg mb-2">企業データがありません</p>
-              <p className="text-gray-400 text-sm">条件を変更するか「企業追加」から登録してください</p>
+
+          {error && <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm text-red-700">{error}</div>}
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* 基本情報 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 col-span-2">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">企業名 <span className="text-red-400">*</span></label>
+                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：株式会社〇〇運輸" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">企業ID</label>
+                  <input value={form.companyId} onChange={e => setForm(f => ({ ...f, companyId: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：12345" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">ステータス</label>
+                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="approaching">📋 アプローチ中</option>
+                    <option value="contracted">✅ 契約中</option>
+                    <option value="delisted">📉 掲載落ち</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">担当者 <span className="text-red-400">*</span></label>
+                  <select value={form.userId} onChange={e => setForm(f => ({ ...f, userId: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">電話番号</label>
+                  <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：03-1234-5678" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">住所</label>
+                  <input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：東京都渋谷区〇〇" />
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">企業ID</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">会社名</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">ステータス</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">担当者</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">採用ペルソナ</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">応募数</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">入社数</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {companies.map((company) => (
-                    <tr key={company.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-500">{company.companyId ?? "-"}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900"><a href={"/companies/" + company.id} className="hover:text-blue-600 hover:underline">{company.name}</a></td>
-                      <td className="px-4 py-3"><span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_COLORS[company.status] ?? "bg-gray-100 text-gray-600")}>{STATUS_LABELS[company.status] ?? company.status}</span></td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.user.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.persona.join(", ") || "-"}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.applyCount}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.hireCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+            {/* 商談情報 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 col-span-2">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">商談情報</h2>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">温度感</label>
+                  <select value={form.temperature} onChange={e => setForm(f => ({ ...f, temperature: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="">未設定</option>
+                    <option value="hot">🔥 ホット</option>
+                    <option value="warm">☀️ ウォーム</option>
+                    <option value="cold">❄️ コールド</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">次回アクション</label>
+                  <input value={form.nextAction} onChange={e => setForm(f => ({ ...f, nextAction: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：資料送付" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">次回アクション日</label>
+                  <input type="date" value={form.nextActionDate} onChange={e => setForm(f => ({ ...f, nextActionDate: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">商談メモ</label>
+                <textarea value={form.negotiationMemo} onChange={e => setForm(f => ({ ...f, negotiationMemo: e.target.value }))} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="商談の詳細を記録..." />
+              </div>
             </div>
-          )}
+
+            {/* 採用情報 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">採用情報</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">応募数</label>
+                  <input type="number" value={form.applyCount} onChange={e => setForm(f => ({ ...f, applyCount: Number(e.target.value) }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">入社数</label>
+                  <input type="number" value={form.hireCount} onChange={e => setForm(f => ({ ...f, hireCount: Number(e.target.value) }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">掲載媒体</label>
+                  <input value={form.media} onChange={e => setForm(f => ({ ...f, media: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：indeed" />
+                </div>
+              </div>
+            </div>
+
+            {/* メモ */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">メモ</h2>
+              <textarea value={form.memo} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} rows={5} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="自由メモ..." />
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-6">
+            <a href="/companies" className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</a>
+            <button onClick={handleSubmit} disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+              {loading ? "登録中..." : "✅ 登録する"}
+            </button>
+          </div>
         </div>
       </main>
     </div>
