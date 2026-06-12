@@ -22,7 +22,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
       <nav className="flex-1 py-4">
         <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
         {links.map(link => {
-          const isActive = pathname === link.href || pathname.startsWith(link.href + "/") && link.href !== "/companies"
+          const isActive = pathname === link.href || (pathname.startsWith(link.href + "/") && link.href !== "/companies")
           return (
             <a
               key={link.href}
