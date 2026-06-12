@@ -1,6 +1,5 @@
-import Sidebar from "@/components/Sidebar"
 "use client"
-
+import Sidebar from "@/components/Sidebar"
 import { useState } from "react"
 
 export default function ImportPage() {

@@ -24,7 +24,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
         {links.map(link => {
           const isActive = pathname === link.href || pathname.startsWith(link.href + "/") && link.href !== "/companies"
           return (
-            
+            <a
               key={link.href}
               href={link.href}
               className={`flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors ${
