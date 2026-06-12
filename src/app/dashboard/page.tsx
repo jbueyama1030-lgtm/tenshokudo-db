@@ -34,6 +34,7 @@ export default async function DashboardPage() {
           <a href="/companies/new" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">
             ➕ 企業追加
           </a>
+          <a href="/companies/import" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">📥 CSVインポート</a>
           <a href="/users" className="flex items-center gap-2.5 px-5 py-2 text-sm text-white/45 hover:text-white/75 hover:bg-white/5 border-l-2 border-transparent">
            👥 ユーザー管理
           </a>
