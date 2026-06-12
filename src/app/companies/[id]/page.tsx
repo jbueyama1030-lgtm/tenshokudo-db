@@ -3,38 +3,68 @@ import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 
+type CompetitorMedia = { name: string; monthly: number | null; costPerHire: number | null; note: string }
+type Option = { name: string; amount: number }
+
 type Company = {
   id: string
   companyId: string | null
   name: string
   status: string
   userId: string
-  persona: string[]
-  media: string | null
+  user: { id: string; name: string }
   phone: string | null
   address: string | null
-  memo: string | null
+  vehicleCount: number | null
+  driverCount: number | null
+  annualHiringTarget: number | null
+  adoptionChallenge: string | null
+  apps: string[]
+  dispatchRatio: string | null
+  shifts: string[]
+  competitorMedia: CompetitorMedia[]
+  tenshokudoCostPerHire: number | null
+  planName: string | null
+  monthlyFee: number | null
+  discountRate: number | null
+  discountNote: string | null
+  options: Option[]
+  contractStart: string | null
+  contractRenewal: string | null
+  applyCount: number
+  hireCount: number
   temperature: string | null
   negotiationMemo: string | null
   nextAction: string | null
   nextActionDate: string | null
-  applyCount: number
-  hireCount: number
-  user: { id: string; name: string }
+  memo: string | null
+  persona: string[]
+  media: string | null
 }
 
 type User = { id: string; name: string }
 
-const STATUS_LABELS: Record<string, string> = {
-  contracted: "✅ 契約中",
-  approaching: "📋 アプローチ中",
-  delisted: "📉 掲載落ち",
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  contracted: { label: "✅ 契約中", cls: "bg-green-100 text-green-800" },
+  approaching: { label: "📋 アプローチ中", cls: "bg-blue-100 text-blue-800" },
+  delisted: { label: "📉 掲載落ち", cls: "bg-gray-100 text-gray-600" },
+}
+const TEMP_MAP: Record<string, { label: string; cls: string }> = {
+  hot: { label: "🔥 ホット", cls: "bg-red-100 text-red-800" },
+  warm: { label: "☀️ ウォーム", cls: "bg-yellow-100 text-yellow-800" },
+  cold: { label: "❄️ コールド", cls: "bg-blue-100 text-blue-800" },
+}
+const ALL_SHIFTS = ["日勤", "夜勤", "隔日勤務", "その他"]
+const ALL_APPS = ["GO", "Uber Taxi", "S.RIDE", "DiDi", "自社アプリ"]
+
+function fmt(n: number | null | undefined) {
+  if (n == null) return "-"
+  return Number(n).toLocaleString("ja-JP")
 }
 
-const TEMP_LABELS: Record<string, { label: string; color: string }> = {
-  hot: { label: "🔥 ホット", color: "bg-red-100 text-red-800" },
-  warm: { label: "☀️ ウォーム", color: "bg-yellow-100 text-yellow-800" },
-  cold: { label: "❄️ コールド", color: "bg-blue-100 text-blue-800" },
+function daysUntil(dateStr: string | null) {
+  if (!dateStr) return null
+  return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000)
 }
 
 export default function CompanyDetailPage() {
@@ -50,11 +80,19 @@ export default function CompanyDetailPage() {
   useEffect(() => {
     fetch(`/api/companies/${id}`).then(r => r.json()).then(data => {
       setCompany(data)
-      setForm(data)
+      setForm({
+        ...data,
+        competitorMedia: data.competitorMedia ?? [],
+        options: data.options ?? [],
+        apps: data.apps ?? [],
+        shifts: data.shifts ?? [],
+      })
     })
     fetch("/api/users").then(r => r.json()).then(setUsers)
     fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
   }, [id])
+
+  const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }))
 
   const handleSave = async () => {
     setLoading(true)
@@ -79,13 +117,26 @@ export default function CompanyDetailPage() {
 
   if (!company) return <div className="flex h-screen items-center justify-center text-gray-400">読み込み中...</div>
 
+  const annualBase = (form.monthlyFee ?? 0) * 12
+  const discountAmt = Math.round(annualBase * ((form.discountRate ?? 0) / 100))
+  const optionTotal = (form.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
+  const totalRevenue = annualBase - discountAmt + optionTotal
+  const renewalDays = daysUntil(company.contractRenewal)
+
+  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div>
+      <div className="text-xs text-gray-400 mb-1">{label}</div>
+      {children}
+    </div>
+  )
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar userName={userName} />
-
       <main className="flex-1 overflow-auto">
-        <div className="px-8 py-6 max-w-4xl">
-          <div className="flex items-center gap-3 mb-6">
+        <div className="px-8 py-6 max-w-5xl">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-4">
             <a href="/companies" className="text-sm text-gray-400 hover:text-gray-600">← 企業一覧</a>
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-bold text-gray-800">{company.name}</h1>
@@ -96,7 +147,7 @@ export default function CompanyDetailPage() {
             {editing ? (
               <>
                 <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
-                <button onClick={() => { setEditing(false); setForm(company) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+                <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
               </>
             ) : (
               <>
@@ -106,108 +157,281 @@ export default function CompanyDetailPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* 基本情報 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 col-span-2">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">企業名</label>
-                  {editing ? <input value={form.name ?? ""} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900 font-medium">{company.name}</p>}
+          {/* 基本情報 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="企業名">
+                {editing ? <input value={form.name ?? ""} onChange={e => set("name", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900 font-medium">{company.name}</p>}
+              </Field>
+              <Field label="企業ID">
+                {editing ? <input value={form.companyId ?? ""} onChange={e => set("companyId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.companyId ?? "-"}</p>}
+              </Field>
+              <Field label="ステータス">
+                {editing ? (
+                  <select value={form.status ?? ""} onChange={e => set("status", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    <option value="approaching">📋 アプローチ中</option>
+                    <option value="contracted">✅ 契約中</option>
+                    <option value="delisted">📉 掲載落ち</option>
+                  </select>
+                ) : <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_MAP[company.status]?.cls}`}>{STATUS_MAP[company.status]?.label}</span>}
+              </Field>
+              <Field label="担当者">
+                {editing ? (
+                  <select value={form.userId ?? ""} onChange={e => set("userId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                ) : <p className="text-sm text-gray-900">{company.user.name}</p>}
+              </Field>
+              <Field label="電話番号">
+                {editing ? <input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.phone ?? "-"}</p>}
+              </Field>
+              <Field label="住所">
+                {editing ? <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
+              </Field>
+              <Field label="保有車両数">
+                {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
+              </Field>
+              <Field label="ドライバー数">
+                {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
+              </Field>
+              <Field label="年間採用目標">
+                {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
+              </Field>
+            </div>
+          </div>
+
+          {/* 採用課題・アプリ */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">採用課題</h2>
+              {editing
+                ? <textarea value={form.adoptionChallenge ?? ""} onChange={e => set("adoptionChallenge", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="採用における課題を記録..." />
+                : <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{company.adoptionChallenge || "-"}</p>}
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">導入アプリ・配車割合</h2>
+              <div className="mb-3">
+                <div className="text-xs text-gray-400 mb-2">導入アプリ</div>
+                {editing ? (
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_APPS.map(app => {
+                      const sel = (form.apps ?? []).includes(app)
+                      return (
+                        <button key={app} type="button" onClick={() => {
+                          const apps = form.apps ?? []
+                          set("apps", sel ? apps.filter(a => a !== app) : [...apps, app])
+                        }} className={`text-xs px-3 py-1 rounded-full border transition-colors ${sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{app}</button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(company.apps ?? []).length > 0
+                      ? (company.apps ?? []).map(app => <span key={app} className="text-xs px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">{app}</span>)
+                      : <span className="text-sm text-gray-400">-</span>}
+                  </div>
+                )}
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">配車割合</div>
+                {editing
+                  ? <input value={form.dispatchRatio ?? ""} onChange={e => set("dispatchRatio", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: GO 60% / Uber 40%" />
+                  : <p className="text-sm text-gray-700">{company.dispatchRatio || "-"}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* 募集勤務形態 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">募集勤務形態</h2>
+            <div className="flex gap-2 flex-wrap">
+              {ALL_SHIFTS.map(s => {
+                const sel = (editing ? form.shifts ?? [] : company.shifts ?? []).includes(s)
+                return editing ? (
+                  <button key={s} type="button" onClick={() => {
+                    const shifts = form.shifts ?? []
+                    set("shifts", sel ? shifts.filter(x => x !== s) : [...shifts, s])
+                  }} className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{s}</button>
+                ) : (
+                  <span key={s} className={`text-sm px-4 py-1.5 rounded-full border ${sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-300 border-gray-200"}`}>{s}</span>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 競合媒体 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">転職道以外の利用媒体・採用単価</h2>
+            <table className="w-full text-sm mb-3">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">媒体名</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">月額費用</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">採用単価</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">備考</th>
+                  {editing && <th className="px-3 py-2"></th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(editing ? form.competitorMedia ?? [] : company.competitorMedia ?? []).map((m, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-2">{editing ? <input value={m.name} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs" /> : m.name}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.monthly ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], monthly: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-24 border border-gray-200 rounded px-2 py-1 text-xs" placeholder="円" /> : (m.monthly != null ? "¥" + fmt(m.monthly) : "-")}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.costPerHire ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], costPerHire: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-28 border border-gray-200 rounded px-2 py-1 text-xs" placeholder="円" /> : (m.costPerHire != null ? "¥" + fmt(m.costPerHire) : "-")}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.note} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], note: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs" /> : m.note}</td>
+                    {editing && <td className="px-3 py-2"><button type="button" onClick={() => set("competitorMedia", (form.competitorMedia ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs hover:text-red-600">削除</button></td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {editing && <button type="button" onClick={() => set("competitorMedia", [...(form.competitorMedia ?? []), { name: "", monthly: null, costPerHire: null, note: "" }])} className="text-xs text-blue-600 hover:underline">＋ 媒体を追加</button>}
+            <div className="mt-3 flex items-center gap-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-400">転職道の採用単価：</span>
+              {editing
+                ? <input type="number" value={form.tenshokudoCostPerHire ?? ""} onChange={e => set("tenshokudoCostPerHire", e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36" placeholder="円" />
+                : <span className="text-base font-bold text-blue-700">{company.tenshokudoCostPerHire != null ? "¥" + fmt(company.tenshokudoCostPerHire) : "-"}</span>}
+            </div>
+          </div>
+
+          {/* 売上管理 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">売上管理</h2>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">年間売上合計</span>
+                <span className="text-2xl font-bold text-blue-700">¥{fmt(totalRevenue)}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="プラン">
+                    {editing
+                      ? <select value={form.planName ?? ""} onChange={e => set("planName", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                          <option value="">未設定</option>
+                          <option>ライト</option><option>スタンダード</option><option>ハイグレード</option>
+                        </select>
+                      : <p className="text-sm text-gray-900">{company.planName ?? "-"}</p>}
+                  </Field>
+                  <Field label="月額掲載料">
+                    {editing
+                      ? <input type="number" value={form.monthlyFee ?? ""} onChange={e => set("monthlyFee", Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="円" />
+                      : <p className="text-sm text-gray-900">{company.monthlyFee != null ? "¥" + fmt(company.monthlyFee) : "-"}</p>}
+                  </Field>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">企業ID</label>
-                  {editing ? <input value={form.companyId ?? ""} onChange={e => setForm(f => ({ ...f, companyId: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.companyId ?? "-"}</p>}
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <span className="text-xs text-gray-500">年間掲載料（基本）</span>
+                  <span className="text-sm font-medium">¥{fmt(annualBase)}</span>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">ステータス</label>
-                  {editing ? (
-                    <select value={form.status ?? ""} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                      <option value="approaching">📋 アプローチ中</option>
-                      <option value="contracted">✅ 契約中</option>
-                      <option value="delisted">📉 掲載落ち</option>
-                    </select>
-                  ) : <p className="text-sm text-gray-900">{STATUS_LABELS[company.status] ?? company.status}</p>}
+                <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">割引率</span>
+                    {editing
+                      ? <input type="number" value={form.discountRate ?? ""} onChange={e => set("discountRate", Number(e.target.value))} className="border border-gray-300 rounded px-2 py-1 text-xs w-16" placeholder="%" />
+                      : <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full">{company.discountRate ?? 0}%</span>}
+                  </div>
+                  <span className="text-sm text-red-500 font-medium">－ ¥{fmt(discountAmt)}</span>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">担当者</label>
-                  {editing ? (
-                    <select value={form.userId ?? ""} onChange={e => setForm(f => ({ ...f, userId: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  ) : <p className="text-sm text-gray-900">{company.user.name}</p>}
+                <div className="py-2 border-b border-gray-100">
+                  <div className="text-xs text-gray-400 mb-2">オプション（追加広告等）</div>
+                  {(editing ? form.options ?? [] : company.options ?? []).map((op, i) => (
+                    <div key={i} className="flex items-center justify-between mb-1.5">
+                      {editing
+                        ? <>
+                            <input value={op.name} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs flex-1 mr-2" placeholder="オプション名" />
+                            <input type="number" value={op.amount} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], amount: Number(e.target.value) }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs w-28 mr-2" placeholder="金額" />
+                            <button type="button" onClick={() => set("options", (form.options ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs">削除</button>
+                          </>
+                        : <>
+                            <span className="text-xs text-gray-600">{op.name}</span>
+                            <span className="text-sm font-medium text-green-700">＋ ¥{fmt(op.amount)}</span>
+                          </>}
+                    </div>
+                  ))}
+                  {editing && <button type="button" onClick={() => set("options", [...(form.options ?? []), { name: "", amount: 0 }])} className="text-xs text-blue-600 hover:underline">＋ オプション追加</button>}
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">電話番号</label>
-                  {editing ? <input value={form.phone ?? ""} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.phone ?? "-"}</p>}
+                <Field label="割引備考">
+                  {editing
+                    ? <input value={form.discountNote ?? ""} onChange={e => set("discountNote", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 3年契約5%OFF" />
+                    : <p className="text-sm text-gray-900">{company.discountNote || "-"}</p>}
+                </Field>
+              </div>
+
+              <div className="space-y-3">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="text-xs text-gray-400 mb-3">契約期間</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="契約開始日">
+                      {editing
+                        ? <input type="date" value={form.contractStart?.slice(0, 10) ?? ""} onChange={e => set("contractStart", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        : <p className="text-sm text-gray-900">{company.contractStart?.slice(0, 10) ?? "-"}</p>}
+                    </Field>
+                    <Field label="次回更新日">
+                      {editing
+                        ? <input type="date" value={form.contractRenewal?.slice(0, 10) ?? ""} onChange={e => set("contractRenewal", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        : <div>
+                            <p className="text-sm text-gray-900">{company.contractRenewal?.slice(0, 10) ?? "-"}</p>
+                            {renewalDays != null && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${renewalDays <= 14 ? "bg-red-100 text-red-700" : renewalDays <= 60 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>残{renewalDays}日</span>
+                            )}
+                          </div>}
+                    </Field>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">住所</label>
-                  {editing ? <input value={form.address ?? ""} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="text-xs text-gray-400 mb-3">転職道実績</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">累計応募数</div>
+                      <div className="text-2xl font-bold text-gray-900">{company.applyCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">累計入社数</div>
+                      <div className="text-2xl font-bold text-green-600">{company.hireCount}</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* 商談情報 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 col-span-2">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">商談情報</h2>
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">温度感</label>
-                  {editing ? (
-                    <select value={form.temperature ?? ""} onChange={e => setForm(f => ({ ...f, temperature: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+          {/* 商談情報 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">商談情報</h2>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <Field label="温度感">
+                {editing
+                  ? <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
                       <option value="">未設定</option>
                       <option value="hot">🔥 ホット</option>
                       <option value="warm">☀️ ウォーム</option>
                       <option value="cold">❄️ コールド</option>
                     </select>
-                  ) : (
-                    <p className="text-sm">
-                      {company.temperature ? (
-                        <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_LABELS[company.temperature]?.color ?? "")}>{TEMP_LABELS[company.temperature]?.label}</span>
-                      ) : "-"}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">次回アクション</label>
-                  {editing ? <input value={form.nextAction ?? ""} onChange={e => setForm(f => ({ ...f, nextAction: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例：資料送付" /> : <p className="text-sm text-gray-900">{company.nextAction ?? "-"}</p>}
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">次回アクション日</label>
-                  {editing ? <input type="date" value={form.nextActionDate ? form.nextActionDate.slice(0, 10) : ""} onChange={e => setForm(f => ({ ...f, nextActionDate: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.nextActionDate ? new Date(company.nextActionDate).toLocaleDateString("ja-JP") : "-"}</p>}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">商談メモ</label>
-                {editing ? <textarea value={form.negotiationMemo ?? ""} onChange={e => setForm(f => ({ ...f, negotiationMemo: e.target.value }))} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="商談の詳細を記録..." /> : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.negotiationMemo ?? "-"}</p>}
-              </div>
+                  : company.temperature
+                    ? <span className={`text-xs px-2 py-1 rounded-full font-medium ${TEMP_MAP[company.temperature]?.cls}`}>{TEMP_MAP[company.temperature]?.label}</span>
+                    : <p className="text-sm text-gray-900">-</p>}
+              </Field>
+              <Field label="次回アクション">
+                {editing ? <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 資料送付" /> : <p className="text-sm text-gray-900">{company.nextAction ?? "-"}</p>}
+              </Field>
+              <Field label="次回アクション日">
+                {editing ? <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.nextActionDate?.slice(0, 10) ?? "-"}</p>}
+              </Field>
             </div>
+            <Field label="商談メモ">
+              {editing
+                ? <textarea value={form.negotiationMemo ?? ""} onChange={e => set("negotiationMemo", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="商談の詳細を記録..." />
+                : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.negotiationMemo ?? "-"}</p>}
+            </Field>
+          </div>
 
-            {/* 採用情報 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">採用情報</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">応募数</label>
-                  {editing ? <input type="number" value={form.applyCount ?? 0} onChange={e => setForm(f => ({ ...f, applyCount: Number(e.target.value) }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-2xl font-bold text-gray-900">{company.applyCount}</p>}
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">入社数</label>
-                  {editing ? <input type="number" value={form.hireCount ?? 0} onChange={e => setForm(f => ({ ...f, hireCount: Number(e.target.value) }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-2xl font-bold text-green-600">{company.hireCount}</p>}
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">掲載媒体</label>
-                  {editing ? <input value={form.media ?? ""} onChange={e => setForm(f => ({ ...f, media: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.media ?? "-"}</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* メモ */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">メモ</h2>
-              {editing ? <textarea value={form.memo ?? ""} onChange={e => setForm(f => ({ ...f, memo: e.target.value }))} rows={5} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
-            </div>
+          {/* メモ */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">メモ</h2>
+            {editing
+              ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
           </div>
         </div>
       </main>

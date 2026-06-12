@@ -28,9 +28,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const company = await prisma.company.update({
     where: { id },
     data: {
+      // 既存
       name: body.name,
       companyId: body.companyId || null,
       status: body.status,
+      userId: body.userId,
       persona: body.persona ?? [],
       media: body.media || null,
       phone: body.phone || null,
@@ -38,6 +40,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       memo: body.memo || null,
       applyCount: body.applyCount ?? 0,
       hireCount: body.hireCount ?? 0,
+      temperature: body.temperature || null,
+      negotiationMemo: body.negotiationMemo || null,
+      nextAction: body.nextAction || null,
+      nextActionDate: body.nextActionDate ? new Date(body.nextActionDate) : null,
+
+      // 新規追加
+      vehicleCount: body.vehicleCount != null ? Number(body.vehicleCount) : null,
+      driverCount: body.driverCount != null ? Number(body.driverCount) : null,
+      annualHiringTarget: body.annualHiringTarget != null ? Number(body.annualHiringTarget) : null,
+      adoptionChallenge: body.adoptionChallenge || null,
+      apps: body.apps ?? [],
+      dispatchRatio: body.dispatchRatio || null,
+      shifts: body.shifts ?? [],
+      competitorMedia: body.competitorMedia ?? [],
+      tenshokudoCostPerHire: body.tenshokudoCostPerHire != null ? Number(body.tenshokudoCostPerHire) : null,
+      planName: body.planName || null,
+      monthlyFee: body.monthlyFee != null ? Number(body.monthlyFee) : null,
+      discountRate: body.discountRate != null ? Number(body.discountRate) : null,
+      discountNote: body.discountNote || null,
+      options: body.options ?? [],
+      contractStart: body.contractStart ? new Date(body.contractStart) : null,
+      contractRenewal: body.contractRenewal ? new Date(body.contractRenewal) : null,
     },
     include: { user: { select: { id: true, name: true } } },
   })

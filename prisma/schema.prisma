@@ -18,32 +18,58 @@ model User {
 }
 
 model Company {
-  id            String   @id @default(cuid())
-  companyId     String?  @unique  // 企業ID（独自番号）
-  name          String            // 会社名
-  status        String   @default("approaching") // contracted / approaching / delisted
-  userId        String            // 担当者
-  user          User     @relation(fields: [userId], references: [id])
-
-  // 採用情報
-  persona       String[] // 採用ペルソナ（多選択）例：["20代","30代"]
-  media         String?  // 掲載媒体
-
-  // 実績
-  applyCount    Int      @default(0) // 転職道経由の応募数
-  hireCount     Int      @default(0) // 転職道経由の入社数
+  id        String  @id @default(cuid())
+  companyId String? @unique
+  name      String
+  status    String  @default("approaching")
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
 
   // 連絡先
-  phone         String?  // 電話番号
-  address       String?  // 住所
+  phone   String?
+  address String?
+
+  // 企業情報
+  vehicleCount       Int?     // 保有車両数
+  driverCount        Int?     // ドライバー数
+  annualHiringTarget Int?     // 年間採用目標
+  adoptionChallenge  String?  // 採用課題
+  apps               String[] // 導入アプリ
+  dispatchRatio      String?  // 配車割合
+  shifts             String[] // 募集勤務形態
+
+  // 競合媒体（JSON配列）
+  // 例: [{"name":"インディード","monthly":30000,"costPerHire":450000,"note":""}]
+  competitorMedia        Json?
+  tenshokudoCostPerHire  Int?     // 転職道の採用単価
+
+  // 売上管理
+  planName      String?  // ライト / スタンダード / ハイグレード
+  monthlyFee    Int?     // 月額掲載料
+  discountRate  Float?   // 割引率（%）
+  discountNote  String?  // 割引備考
+  // 例: [{"name":"オプション広告","amount":300000}]
+  options       Json?
+
+  // 契約期間
+  contractStart   DateTime?
+  contractRenewal DateTime?
+
+  // 採用実績
+  persona    String[]
+  media      String?
+  applyCount Int      @default(0)
+  hireCount  Int      @default(0)
+
+  // 商談管理
+  temperature     String?
+  negotiationMemo String?
+  nextAction      String?
+  nextActionDate  DateTime?
 
   // メモ
-  memo          String?  // 備考
-// 商談管理
-  temperature     String?  // hot / warm / cold
-  negotiationMemo String?  // 商談メモ
-  nextAction      String?  // 次回アクション
-  nextActionDate  DateTime? // 次回アクション日
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  memo String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

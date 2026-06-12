@@ -1,0 +1,17 @@
+-- AlterTable
+ALTER TABLE "Company" ADD COLUMN     "adoptionChallenge" TEXT,
+ADD COLUMN     "annualHiringTarget" INTEGER,
+ADD COLUMN     "apps" TEXT[],
+ADD COLUMN     "competitorMedia" JSONB,
+ADD COLUMN     "contractRenewal" TIMESTAMP(3),
+ADD COLUMN     "contractStart" TIMESTAMP(3),
+ADD COLUMN     "discountNote" TEXT,
+ADD COLUMN     "discountRate" DOUBLE PRECISION,
+ADD COLUMN     "dispatchRatio" TEXT,
+ADD COLUMN     "driverCount" INTEGER,
+ADD COLUMN     "monthlyFee" INTEGER,
+ADD COLUMN     "options" JSONB,
+ADD COLUMN     "planName" TEXT,
+ADD COLUMN     "shifts" TEXT[],
+ADD COLUMN     "tenshokudoCostPerHire" INTEGER,
+ADD COLUMN     "vehicleCount" INTEGER;
