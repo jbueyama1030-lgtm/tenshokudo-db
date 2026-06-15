@@ -12,6 +12,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
     { href: "/companies/import", label: "📥 CSVインポート" },
     { href: "/users", label: "👥 ユーザー管理" },
     { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
+    { href: "/companies/import-monthly", label: "📈 月次インポート" },
   ]
 
   return (

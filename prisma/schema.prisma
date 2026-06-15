@@ -30,32 +30,30 @@ model Company {
   address String?
 
   // 企業情報
-  vehicleCount       Int?     // 保有車両数
-  driverCount        Int?     // ドライバー数
-  annualHiringTarget Int?     // 年間採用目標
-  adoptionChallenge  String?  // 採用課題
-  apps               String[] // 導入アプリ
-  dispatchRatio      String?  // 配車割合
-  shifts             String[] // 募集勤務形態
+  vehicleCount       Int?
+  driverCount        Int?
+  annualHiringTarget Int?
+  adoptionChallenge  String?
+  apps               String[]
+  dispatchRatio      String?
+  shifts             String[]
 
-  // 競合媒体（JSON配列）
-  // 例: [{"name":"インディード","monthly":30000,"costPerHire":450000,"note":""}]
-  competitorMedia        Json?
-  tenshokudoCostPerHire  Int?     // 転職道の採用単価
+  // 競合媒体
+  competitorMedia       Json?
+  tenshokudoCostPerHire Int?
 
   // 売上管理
-  planName      String?  // ライト / スタンダード / ハイグレード
-  monthlyFee    Int?     // 月額掲載料
-  discountRate  Float?   // 割引率（%）
-  discountNote  String?  // 割引備考
-  // 例: [{"name":"オプション広告","amount":300000}]
-  options       Json?
+  planName     String?
+  monthlyFee   Int?
+  discountRate Float?
+  discountNote String?
+  options      Json?
 
   // 契約期間
   contractStart   DateTime?
   contractRenewal DateTime?
 
-  // 採用実績
+  // 採用実績（累計）
   persona    String[]
   media      String?
   applyCount Int      @default(0)
@@ -70,6 +68,26 @@ model Company {
   // メモ
   memo String?
 
+  // 月次実績
+  monthlyRecords MonthlyRecord[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model MonthlyRecord {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  year      Int
+  month     Int
+  applyCount      Int  @default(0)
+  hireCount       Int  @default(0)
+  // 流入元内訳（JSON）例: {"indeed＋": 5, "Ligla LINE配信": 2}
+  inflowBreakdown Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, year, month])
 }
