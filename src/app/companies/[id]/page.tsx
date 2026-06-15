@@ -151,6 +151,7 @@ export default function CompanyDetailPage() {
   const [form, setForm] = useState<Partial<Company>>({})
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState("")
+  const [sessionUser, setSessionUser] = useState<{ id: string; role: string } | null>(null)
 
   useEffect(() => {
     fetch(`/api/companies/${id}`).then(r => r.json()).then(data => {
@@ -164,7 +165,10 @@ export default function CompanyDetailPage() {
       })
     })
     fetch("/api/users").then(r => r.json()).then(setUsers)
-    fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
+    fetch("/api/auth/session").then(r => r.json()).then(s => {
+      setUserName(s?.user?.name ?? "")
+      setSessionUser({ id: s?.user?.id ?? "", role: s?.user?.role ?? "" })
+    })
   }, [id])
 
   const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }))
@@ -220,17 +224,19 @@ export default function CompanyDetailPage() {
 
           <div className="flex gap-2 mb-6">
             {editing ? (
-              <>
-                <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
-                <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 編集</button>
-                <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
-              </>
-            )}
-          </div>
+    <>
+      <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
+      <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+    </>
+  ) : sessionUser?.role !== "sales" || company.userId === sessionUser?.id ? (
+    <>
+      <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 編集</button>
+      <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
+    </>
+  ) : (
+    <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（担当外）</span>
+  )}
+</div>
 
           {/* 基本情報 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
