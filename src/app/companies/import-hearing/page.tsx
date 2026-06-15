@@ -26,20 +26,41 @@ export default function ImportHearingPage() {
       const buffer = ev.target?.result as ArrayBuffer
       const decoder = new TextDecoder("utf-8")
       const text = decoder.decode(buffer)
-      const lines = text.split(/\r?\n/).filter(line => line.trim())
-      const rows = lines.map(line => {
-        const result: string[] = []
-        let cur = ""
-        let inQuote = false
-        for (let i = 0; i < line.length; i++) {
-          const ch = line[i]
-          if (ch === '"') { inQuote = !inQuote }
-          else if (ch === "," && !inQuote) { result.push(cur); cur = "" }
-          else { cur += ch }
+
+      const rows: string[][] = []
+      let cur = ""
+      let inQuote = false
+      let currentRow: string[] = []
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        if (ch === '"') {
+          inQuote = !inQuote
+        } else if (ch === "," && !inQuote) {
+          currentRow.push(cur)
+          cur = ""
+        } else if (ch === "\r" && text[i + 1] === "\n" && !inQuote) {
+          i++
+          currentRow.push(cur)
+          cur = ""
+          if (currentRow.some(c => c.trim())) rows.push(currentRow)
+          currentRow = []
+        } else if (ch === "\n" && !inQuote) {
+          currentRow.push(cur)
+          cur = ""
+          if (currentRow.some(c => c.trim())) rows.push(currentRow)
+          currentRow = []
+        } else if (ch === "\r" && !inQuote) {
+          // skip
+        } else {
+          cur += ch
         }
-        result.push(cur)
-        return result
-      })
+      }
+      if (cur || currentRow.length > 0) {
+        currentRow.push(cur)
+        if (currentRow.some(c => c.trim())) rows.push(currentRow)
+      }
+
       setPreview(rows)
     }
     reader.readAsArrayBuffer(file)
@@ -72,7 +93,7 @@ export default function ImportHearingPage() {
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6 max-w-5xl">
           <h1 className="text-xl font-bold text-gray-800 mb-2">📋 ヒアリングデータ インポート</h1>
-          <p className="text-sm text-gray-500 mb-6">Googleフォームのヒアリングシートを企業ID・企業名で既存レコードにマージします</p>
+          <p className="text-sm text-gray-500 mb-6">Googleフォームのヒアリングシートを企業IDで既存レコードにマージします</p>
 
           {result && (
             <div className="bg-green-50 border border-green-200 rounded-xl p-5 mb-6">
@@ -116,7 +137,7 @@ export default function ImportHearingPage() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-sm font-semibold text-gray-700">プレビュー（{preview.length - 1}件）</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">企業ID・企業名で既存レコードを検索してマージします</p>
+                  <p className="text-xs text-gray-400 mt-0.5">企業IDで既存レコードを検索してマージします</p>
                 </div>
                 <button onClick={handleImport} disabled={loading} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                   {loading ? "インポート中..." : `📋 ${preview.length - 1}件をマージ`}
