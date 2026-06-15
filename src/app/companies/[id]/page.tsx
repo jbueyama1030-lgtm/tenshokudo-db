@@ -5,6 +5,14 @@ import { useParams, useRouter } from "next/navigation"
 
 type CompetitorMedia = { name: string; monthly: number | null; costPerHire: number | null; note: string }
 type Option = { name: string; amount: number }
+type MonthlyRecord = {
+  id: string
+  year: number
+  month: number
+  applyCount: number
+  hireCount: number
+  inflowBreakdown: Record<string, number> | null
+}
 
 type Company = {
   id: string
@@ -40,6 +48,7 @@ type Company = {
   memo: string | null
   persona: string[]
   media: string | null
+  monthlyRecords: MonthlyRecord[]
 }
 
 type User = { id: string; name: string }
@@ -357,7 +366,6 @@ export default function CompanyDetailPage() {
                     : <p className="text-sm text-gray-900">{company.discountNote || "-"}</p>}
                 </Field>
               </div>
-
               <div className="space-y-3">
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="text-xs text-gray-400 mb-3">契約期間</div>
@@ -395,6 +403,59 @@ export default function CompanyDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* 月次実績 */}
+          {company.monthlyRecords && company.monthlyRecords.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">📈 月次実績</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">年月</th>
+                      <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">応募数</th>
+                      <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">入社数</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">流入元内訳</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {company.monthlyRecords.map((r) => (
+                      <tr key={r.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-900 font-medium">{r.year}年{r.month}月</td>
+                        <td className="px-3 py-2 text-right font-bold text-blue-600">{r.applyCount}</td>
+                        <td className="px-3 py-2 text-right font-bold text-green-600">{r.hireCount}</td>
+                        <td className="px-3 py-2">
+                          {r.inflowBreakdown && (
+                            <div className="flex flex-wrap gap-1">
+                              {Object.entries(r.inflowBreakdown)
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([key, val]) => (
+                                  <span key={key} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                                    {key}: {val}
+                                  </span>
+                                ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t border-gray-200">
+                    <tr>
+                      <td className="px-3 py-2 text-xs font-medium text-gray-500">合計</td>
+                      <td className="px-3 py-2 text-right font-bold text-blue-700">
+                        {company.monthlyRecords.reduce((s, r) => s + r.applyCount, 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-bold text-green-700">
+                        {company.monthlyRecords.reduce((s, r) => s + r.hireCount, 0)}
+                      </td>
+                      <td className="px-3 py-2"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* 商談情報 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">

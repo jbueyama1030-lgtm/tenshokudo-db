@@ -11,7 +11,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params
   const company = await prisma.company.findUnique({
     where: { id },
-    include: { user: { select: { id: true, name: true } } },
+    include: {
+      user: { select: { id: true, name: true } },
+      monthlyRecords: {
+        orderBy: [{ year: "asc" }, { month: "asc" }],
+      },
+    },
   })
 
   if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 })
