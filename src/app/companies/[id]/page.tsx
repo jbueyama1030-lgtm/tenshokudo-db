@@ -1,6 +1,6 @@
 "use client"
 import Sidebar from "@/components/Sidebar"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 
 type CompetitorMedia = { name: string; monthly: number | null; costPerHire: number | null; note: string }
@@ -75,7 +75,73 @@ function daysUntil(dateStr: string | null) {
   if (!dateStr) return null
   return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000)
 }
+function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
+  const years = [...new Set(records.map(r => r.year))].sort()
+  const [selectedYear, setSelectedYear] = useState(years[years.length - 1])
+  const filtered = records.filter(r => r.year === selectedYear)
 
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-700">📈 月次実績</h2>
+        <div className="flex gap-1">
+          {years.map(y => (
+            <button key={y} onClick={() => setSelectedYear(y)}
+              className={`px-3 py-1 text-xs rounded-full border transition-colors ${selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400"}`}>
+              {y}年
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">月</th>
+              <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">応募数</th>
+              <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">入社数</th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">流入元内訳</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {filtered.map((r) => (
+              <tr key={r.id} className="hover:bg-gray-50">
+                <td className="px-3 py-2 text-gray-900 font-medium">{r.month}月</td>
+                <td className="px-3 py-2 text-right font-bold text-blue-600">{r.applyCount}</td>
+                <td className="px-3 py-2 text-right font-bold text-green-600">{r.hireCount}</td>
+                <td className="px-3 py-2">
+                  {r.inflowBreakdown && (
+                    <div className="flex flex-wrap gap-1">
+                      {Object.entries(r.inflowBreakdown)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([key, val]) => (
+                          <span key={key} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            {key}: {val}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t border-gray-200">
+            <tr>
+              <td className="px-3 py-2 text-xs font-medium text-gray-500">{selectedYear}年 合計</td>
+              <td className="px-3 py-2 text-right font-bold text-blue-700">
+                {filtered.reduce((s, r) => s + r.applyCount, 0)}
+              </td>
+              <td className="px-3 py-2 text-right font-bold text-green-700">
+                {filtered.reduce((s, r) => s + r.hireCount, 0)}
+              </td>
+              <td className="px-3 py-2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -406,55 +472,7 @@ export default function CompanyDetailPage() {
 
           {/* 月次実績 */}
           {company.monthlyRecords && company.monthlyRecords.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">📈 月次実績</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">年月</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">応募数</th>
-                      <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">入社数</th>
-                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">流入元内訳</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {company.monthlyRecords.map((r) => (
-                      <tr key={r.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 text-gray-900 font-medium">{r.year}年{r.month}月</td>
-                        <td className="px-3 py-2 text-right font-bold text-blue-600">{r.applyCount}</td>
-                        <td className="px-3 py-2 text-right font-bold text-green-600">{r.hireCount}</td>
-                        <td className="px-3 py-2">
-                          {r.inflowBreakdown && (
-                            <div className="flex flex-wrap gap-1">
-                              {Object.entries(r.inflowBreakdown)
-                                .sort((a, b) => b[1] - a[1])
-                                .map(([key, val]) => (
-                                  <span key={key} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                                    {key}: {val}
-                                  </span>
-                                ))}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-50 border-t border-gray-200">
-                    <tr>
-                      <td className="px-3 py-2 text-xs font-medium text-gray-500">合計</td>
-                      <td className="px-3 py-2 text-right font-bold text-blue-700">
-                        {company.monthlyRecords.reduce((s, r) => s + r.applyCount, 0)}
-                      </td>
-                      <td className="px-3 py-2 text-right font-bold text-green-700">
-                        {company.monthlyRecords.reduce((s, r) => s + r.hireCount, 0)}
-                      </td>
-                      <td className="px-3 py-2"></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
+           <MonthlyRecordsTable records={company.monthlyRecords} />
           )}
 
           {/* 商談情報 */}
