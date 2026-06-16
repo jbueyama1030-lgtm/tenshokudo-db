@@ -9,6 +9,11 @@ function fmt(n: number) {
   return n.toLocaleString("ja-JP")
 }
 
+function daysUntil(date: string | Date) {
+  const diff = Math.ceil((new Date(date).getTime() - new Date().getTime()) / 86400000)
+  return diff
+}
+
 export default async function DashboardPage() {
   const session = await auth()
   if (!session) redirect("/login")
@@ -21,8 +26,6 @@ export default async function DashboardPage() {
 
   const thisMonthStart = new Date(thisYear, thisMonth - 1, 1)
   const thisMonthEnd = new Date(thisYear, thisMonth, 0, 23, 59, 59)
-  const lastMonthStart = new Date(lastMonthYear, lastMonth - 1, 1)
-  const lastMonthEnd = new Date(lastMonthYear, lastMonth, 0, 23, 59, 59)
   const thisYearStart = new Date(thisYear, 0, 1)
 
   const userId = session.user.id
@@ -34,7 +37,7 @@ export default async function DashboardPage() {
     select: { id: true, monthlyFee: true, discountRate: true, options: true, contractStart: true, contractRenewal: true, name: true, nextActionDate: true, nextAction: true },
   })
 
-  // 自分の今月売上（月額 × 割引後）
+  // 自分の今月売上
   const myThisMonthRevenue = myCompanies.reduce((sum, c) => {
     const base = c.monthlyFee ?? 0
     const discount = base * ((c.discountRate ?? 0) / 100)
@@ -89,7 +92,7 @@ export default async function DashboardPage() {
     .sort((a, b) => new Date(a.contractRenewal!).getTime() - new Date(b.contractRenewal!).getTime())
     .slice(0, 10)
 
-  // 次回アクション期限切れ（今日以前）
+  // 次回アクション期限切れ
   const actionAlerts = await prisma.company.findMany({
     where: {
       nextActionDate: { lte: new Date() },
@@ -101,10 +104,21 @@ export default async function DashboardPage() {
     take: 10,
   })
 
-  function daysUntil(date: string | Date) {
-  const diff = Math.ceil((new Date(date).getTime() - new Date().getTime()) / 86400000)
-  return diff
-}
+  // 直近1ヶ月の応募数ゼロアラート（契約中企業）
+  const lastMonthRecords = await prisma.monthlyRecord.findMany({
+    where: { year: lastMonthYear, month: lastMonth },
+    select: { companyId: true, applyCount: true },
+  })
+  const lastMonthRecordMap: Record<string, number> = {}
+  lastMonthRecords.forEach(r => { lastMonthRecordMap[r.companyId] = r.applyCount })
+
+  const zeroApplyAlerts = allContracted
+    .filter(c => {
+      const count = lastMonthRecordMap[c.id]
+      return count === undefined || count === 0
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ja"))
+    .slice(0, 15)
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -163,7 +177,7 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4 mb-4">
             {/* 契約更新アラート */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="text-sm font-semibold text-gray-700 mb-4">🔔 契約更新アラート（60日以内）</h2>
@@ -237,6 +251,43 @@ export default async function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* 応募数ゼロアラート */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">
+              ⚠️ 応募数ゼロ企業（{lastMonthYear}年{lastMonth}月）
+              <span className="ml-2 text-xs font-normal text-gray-400">{zeroApplyAlerts.length}社</span>
+            </h2>
+            {zeroApplyAlerts.length === 0 ? (
+              <p className="text-sm text-gray-400">該当企業なし</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="border-b border-gray-100">
+                  <tr>
+                    <th className="text-left pb-2 text-xs font-medium text-gray-400">会社名</th>
+                    <th className="text-left pb-2 text-xs font-medium text-gray-400">担当</th>
+                    <th className="text-right pb-2 text-xs font-medium text-gray-400">先月応募数</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {zeroApplyAlerts.map(c => (
+                    <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="py-2">
+                        <a href={"/companies/" + c.id} className="text-blue-600 hover:underline text-xs font-medium">{c.name}</a>
+                      </td>
+                      <td className="py-2 text-xs text-gray-500">{c.user.name}</td>
+                      <td className="py-2 text-right">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                          {lastMonthRecordMap[c.id] !== undefined ? lastMonthRecordMap[c.id] + "件" : "データなし"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
         </div>
       </main>
     </div>
