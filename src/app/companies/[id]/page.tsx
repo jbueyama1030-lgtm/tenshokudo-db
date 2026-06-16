@@ -83,6 +83,16 @@ function daysUntil(dateStr: string | null) {
   return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000)
 }
 
+// ★ コンポーネント外に定義
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-gray-400 mb-1">{label}</div>
+      {children}
+    </div>
+  )
+}
+
 function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
   const years = [...new Set(records.map(r => r.year))].sort()
   const [selectedYear, setSelectedYear] = useState(years[years.length - 1])
@@ -208,13 +218,6 @@ export default function CompanyDetailPage() {
   const totalRevenue = annualBase - discountAmt + optionTotal
   const renewalDays = daysUntil(company.contractRenewal)
 
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div>
-      <div className="text-xs text-gray-400 mb-1">{label}</div>
-      {children}
-    </div>
-  )
-
   const setDriverSales = (key: string, val: unknown) => {
     const current = (form.driverSales as DriverSales) ?? {}
     set("driverSales", { ...current, [key]: val })
@@ -293,13 +296,13 @@ export default function CompanyDetailPage() {
                 {editing ? <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
               </Field>
               <Field label="保有車両数">
-               {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
+                {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
               </Field>
               <Field label="ドライバー数">
-               {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
+                {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
               </Field>
               <Field label="年間採用目標">
-                {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
+                {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
               </Field>
             </div>
           </div>
