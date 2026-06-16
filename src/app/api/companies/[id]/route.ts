@@ -30,7 +30,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params
   const body = await req.json()
 
-  // 既存企業を取得
   const existing = await prisma.company.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -42,11 +41,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const company = await prisma.company.update({
     where: { id },
     data: {
-      // 既存フィールド
       name: body.name,
       companyId: body.companyId || null,
       status: body.status,
-      userId: session.user.role === "sales" ? existing.userId : body.userId, // salesは担当者変更不可
+      // salesは担当者変更不可
+      userId: session.user.role === "sales" ? existing.userId : body.userId,
       persona: body.persona ?? [],
       media: body.media || null,
       phone: body.phone || null,
@@ -58,7 +57,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       negotiationMemo: body.negotiationMemo || null,
       nextAction: body.nextAction || null,
       nextActionDate: body.nextActionDate ? new Date(body.nextActionDate) : null,
-      // 新規フィールド
       vehicleCount: body.vehicleCount != null ? Number(body.vehicleCount) : null,
       driverCount: body.driverCount != null ? Number(body.driverCount) : null,
       annualHiringTarget: body.annualHiringTarget != null ? Number(body.annualHiringTarget) : null,
@@ -75,6 +73,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       options: body.options ?? [],
       contractStart: body.contractStart ? new Date(body.contractStart) : null,
       contractRenewal: body.contractRenewal ? new Date(body.contractRenewal) : null,
+      driverSales: body.driverSales ?? null,
     },
     include: { user: { select: { id: true, name: true } } },
   })
@@ -88,7 +87,6 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const { id } = await params
 
-  // 既存企業を取得
   const existing = await prisma.company.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 

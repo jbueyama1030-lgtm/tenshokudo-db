@@ -68,6 +68,10 @@ model Company {
   // メモ
   memo String?
 
+  // ドライバー売上情報
+  // 例: {"全体": {"top": 120, "avg": 80}, "隔日勤務": {"top": 100, "avg": 70}, "日勤": {"top": 80, "avg": 60}, "夜勤": {"top": 90, "avg": 65}}
+  driverSales Json?
+
   // 月次実績
   monthlyRecords MonthlyRecord[]
 
@@ -83,7 +87,6 @@ model MonthlyRecord {
   month     Int
   applyCount      Int  @default(0)
   hireCount       Int  @default(0)
-  // 流入元内訳（JSON）例: {"indeed＋": 5, "Ligla LINE配信": 2}
   inflowBreakdown Json?
 
   createdAt DateTime @default(now())

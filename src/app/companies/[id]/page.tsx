@@ -1,6 +1,6 @@
 "use client"
 import Sidebar from "@/components/Sidebar"
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 
 type CompetitorMedia = { name: string; monthly: number | null; costPerHire: number | null; note: string }
@@ -12,6 +12,11 @@ type MonthlyRecord = {
   applyCount: number
   hireCount: number
   inflowBreakdown: Record<string, number> | null
+}
+type DriverSales = {
+  monthlyRevenue?: number
+  annualRevenue?: number
+  shifts?: Record<string, { top?: number; avg?: number }>
 }
 
 type Company = {
@@ -49,6 +54,7 @@ type Company = {
   persona: string[]
   media: string | null
   monthlyRecords: MonthlyRecord[]
+  driverSales: DriverSales | null
 }
 
 type User = { id: string; name: string }
@@ -65,6 +71,7 @@ const TEMP_MAP: Record<string, { label: string; cls: string }> = {
 }
 const ALL_SHIFTS = ["日勤", "夜勤", "隔日勤務", "その他"]
 const ALL_APPS = ["GO", "Uber Taxi", "S.RIDE", "DiDi", "自社アプリ"]
+const DRIVER_SHIFT_KEYS = ["全体", "隔日勤務", "日勤", "夜勤"]
 
 function fmt(n: number | null | undefined) {
   if (n == null) return "-"
@@ -75,6 +82,7 @@ function daysUntil(dateStr: string | null) {
   if (!dateStr) return null
   return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000)
 }
+
 function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
   const years = [...new Set(records.map(r => r.year))].sort()
   const [selectedYear, setSelectedYear] = useState(years[years.length - 1])
@@ -128,12 +136,8 @@ function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
           <tfoot className="bg-gray-50 border-t border-gray-200">
             <tr>
               <td className="px-3 py-2 text-xs font-medium text-gray-500">{selectedYear}年 合計</td>
-              <td className="px-3 py-2 text-right font-bold text-blue-700">
-                {filtered.reduce((s, r) => s + r.applyCount, 0)}
-              </td>
-              <td className="px-3 py-2 text-right font-bold text-green-700">
-                {filtered.reduce((s, r) => s + r.hireCount, 0)}
-              </td>
+              <td className="px-3 py-2 text-right font-bold text-blue-700">{filtered.reduce((s, r) => s + r.applyCount, 0)}</td>
+              <td className="px-3 py-2 text-right font-bold text-green-700">{filtered.reduce((s, r) => s + r.hireCount, 0)}</td>
               <td className="px-3 py-2"></td>
             </tr>
           </tfoot>
@@ -142,6 +146,7 @@ function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
     </div>
   )
 }
+
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -162,6 +167,7 @@ export default function CompanyDetailPage() {
         options: data.options ?? [],
         apps: data.apps ?? [],
         shifts: data.shifts ?? [],
+        driverSales: data.driverSales ?? { monthlyRevenue: undefined, annualRevenue: undefined, shifts: {} },
       })
     })
     fetch("/api/users").then(r => r.json()).then(setUsers)
@@ -209,12 +215,28 @@ export default function CompanyDetailPage() {
     </div>
   )
 
+  const setDriverSales = (key: string, val: unknown) => {
+    const current = (form.driverSales as DriverSales) ?? {}
+    set("driverSales", { ...current, [key]: val })
+  }
+
+  const setDriverShift = (shift: string, field: "top" | "avg", val: string) => {
+    const current = (form.driverSales as DriverSales) ?? {}
+    const shifts = current.shifts ?? {}
+    set("driverSales", {
+      ...current,
+      shifts: {
+        ...shifts,
+        [shift]: { ...shifts[shift], [field]: val ? Number(val) : undefined },
+      },
+    })
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar userName={userName} />
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6 max-w-5xl">
-          {/* Header */}
           <div className="flex items-center gap-3 mb-4">
             <a href="/companies" className="text-sm text-gray-400 hover:text-gray-600">← 企業一覧</a>
             <span className="text-gray-300">/</span>
@@ -224,19 +246,19 @@ export default function CompanyDetailPage() {
 
           <div className="flex gap-2 mb-6">
             {editing ? (
-    <>
-      <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
-      <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
-    </>
-  ) : sessionUser?.role !== "sales" || company.userId === sessionUser?.id ? (
-    <>
-      <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 編集</button>
-      <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
-    </>
-  ) : (
-    <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（担当外）</span>
-  )}
-</div>
+              <>
+                <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
+                <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+              </>
+            ) : sessionUser?.role !== "sales" || company.userId === sessionUser?.id ? (
+              <>
+                <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 編集</button>
+                <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
+              </>
+            ) : (
+              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（担当外）</span>
+            )}
+          </div>
 
           {/* 基本情報 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
@@ -339,6 +361,119 @@ export default function CompanyDetailPage() {
                 )
               })}
             </div>
+          </div>
+
+          {/* ドライバー売上情報 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">🚕 ドライバー・会社売上情報</h2>
+            {editing ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="会社月間売上">
+                    <input
+                      type="number"
+                      value={(form.driverSales as DriverSales)?.monthlyRevenue ?? ""}
+                      onChange={e => setDriverSales("monthlyRevenue", e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="例: 9600000"
+                    />
+                  </Field>
+                  <Field label="会社年間売上">
+                    <input
+                      type="number"
+                      value={(form.driverSales as DriverSales)?.annualRevenue ?? ""}
+                      onChange={e => setDriverSales("annualRevenue", e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="例: 115200000"
+                    />
+                  </Field>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-2">勤務形態別ドライバー売上（万円）</div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">勤務形態</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">トップ売上（万円）</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">平均売上（万円）</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {DRIVER_SHIFT_KEYS.map(shift => (
+                        <tr key={shift}>
+                          <td className="px-3 py-2 text-xs font-medium text-gray-700">{shift}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={(form.driverSales as DriverSales)?.shifts?.[shift]?.top ?? ""}
+                              onChange={e => setDriverShift(shift, "top", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs"
+                              placeholder="例: 100"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={(form.driverSales as DriverSales)?.shifts?.[shift]?.avg ?? ""}
+                              onChange={e => setDriverShift(shift, "avg", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs"
+                              placeholder="例: 70"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="text-xs text-blue-500 mb-1">会社月間売上</div>
+                    <div className="text-2xl font-bold text-blue-700">
+                      {company.driverSales?.monthlyRevenue != null ? "¥" + fmt(company.driverSales.monthlyRevenue) : "-"}
+                    </div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="text-xs text-green-500 mb-1">会社年間売上</div>
+                    <div className="text-2xl font-bold text-green-700">
+                      {company.driverSales?.annualRevenue != null ? "¥" + fmt(company.driverSales.annualRevenue) : "-"}
+                    </div>
+                  </div>
+                </div>
+                {company.driverSales?.shifts && Object.keys(company.driverSales.shifts).length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-400 mb-2">勤務形態別ドライバー売上</div>
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">勤務形態</th>
+                          <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">トップ売上</th>
+                          <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">平均売上</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {DRIVER_SHIFT_KEYS.filter(s => company.driverSales?.shifts?.[s]).map(shift => (
+                          <tr key={shift} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs font-medium text-gray-700">{shift}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-600">
+                              {company.driverSales?.shifts?.[shift]?.top != null ? company.driverSales.shifts[shift].top + "万円" : "-"}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-gray-600">
+                              {company.driverSales?.shifts?.[shift]?.avg != null ? company.driverSales.shifts[shift].avg + "万円" : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(!company.driverSales || (!company.driverSales.monthlyRevenue && !company.driverSales.annualRevenue && !company.driverSales.shifts)) && (
+                  <p className="text-sm text-gray-400">未入力</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* 競合媒体 */}
@@ -478,7 +613,7 @@ export default function CompanyDetailPage() {
 
           {/* 月次実績 */}
           {company.monthlyRecords && company.monthlyRecords.length > 0 && (
-           <MonthlyRecordsTable records={company.monthlyRecords} />
+            <MonthlyRecordsTable records={company.monthlyRecords} />
           )}
 
           {/* 商談情報 */}
