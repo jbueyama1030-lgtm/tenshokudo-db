@@ -293,10 +293,10 @@ export default function CompanyDetailPage() {
                 {editing ? <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
               </Field>
               <Field label="保有車両数">
-                {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
+               {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
               </Field>
               <Field label="ドライバー数">
-                {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
+               {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
               </Field>
               <Field label="年間採用目標">
                 {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
