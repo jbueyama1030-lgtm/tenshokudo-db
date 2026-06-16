@@ -101,10 +101,10 @@ export default async function DashboardPage() {
     take: 10,
   })
 
-  function daysUntil(dateStr: string) {
-    const diff = Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000)
-    return diff
-  }
+  function daysUntil(date: string | Date) {
+  const diff = Math.ceil((new Date(date).getTime() - new Date().getTime()) / 86400000)
+  return diff
+}
 
   return (
     <div className="flex h-screen bg-gray-50">
