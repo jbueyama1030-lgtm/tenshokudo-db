@@ -31,60 +31,50 @@ export default async function DashboardPage() {
   const userId = session.user.id
   const userRole = session.user.role
 
-  // 自分の担当企業
   const myCompanies = await prisma.company.findMany({
     where: { userId, status: "contracted" },
     select: { id: true, monthlyFee: true, discountRate: true, options: true, contractStart: true, contractRenewal: true, name: true, nextActionDate: true, nextAction: true },
   })
 
-  // 自分の今月売上
   const myThisMonthRevenue = myCompanies.reduce((sum, c) => {
     const base = c.monthlyFee ?? 0
     const discount = base * ((c.discountRate ?? 0) / 100)
     return sum + base - discount
   }, 0)
 
-  // 自分の新規獲得（今月）
   const myNewThisMonth = myCompanies.filter(c =>
     c.contractStart && new Date(c.contractStart) >= thisMonthStart && new Date(c.contractStart) <= thisMonthEnd
   ).length
 
-  // 自分の新規獲得（今年）
   const myNewThisYear = myCompanies.filter(c =>
     c.contractStart && new Date(c.contractStart) >= thisYearStart
   ).length
 
-  // 全体の契約中企業
   const allContracted = await prisma.company.findMany({
     where: { status: "contracted" },
     select: { id: true, monthlyFee: true, discountRate: true, contractStart: true, contractRenewal: true, name: true, nextActionDate: true, userId: true, user: { select: { id: true, name: true } } },
   })
 
-  // 全体今月売上
   const allThisMonthRevenue = allContracted.reduce((sum, c) => {
     const base = c.monthlyFee ?? 0
     const discount = base * ((c.discountRate ?? 0) / 100)
     return sum + base - discount
   }, 0)
 
-  // 全体前月売上
   const allLastMonthRevenue = allContracted.reduce((sum, c) => {
     const base = c.monthlyFee ?? 0
     const discount = base * ((c.discountRate ?? 0) / 100)
     return sum + base - discount
   }, 0)
 
-  // 全体新規（今月）
   const allNewThisMonth = allContracted.filter(c =>
     c.contractStart && new Date(c.contractStart) >= thisMonthStart && new Date(c.contractStart) <= thisMonthEnd
   ).length
 
-  // 総企業数
   const totalCompanies = await prisma.company.count()
   const totalContracted = allContracted.length
   const totalApproaching = await prisma.company.count({ where: { status: "approaching" } })
 
-  // 契約更新アラート（60日以内）
   const alertDate = new Date()
   alertDate.setDate(alertDate.getDate() + 60)
   const renewalAlerts = allContracted
@@ -92,7 +82,6 @@ export default async function DashboardPage() {
     .sort((a, b) => new Date(a.contractRenewal!).getTime() - new Date(b.contractRenewal!).getTime())
     .slice(0, 10)
 
-  // 次回アクション期限切れ
   const actionAlerts = await prisma.company.findMany({
     where: {
       nextActionDate: { lte: new Date() },
@@ -104,7 +93,6 @@ export default async function DashboardPage() {
     take: 10,
   })
 
-  // 直近1ヶ月の応募数ゼロアラート
   const lastMonthRecords = await prisma.monthlyRecord.findMany({
     where: { year: lastMonthYear, month: lastMonth },
     select: { companyId: true, applyCount: true },
@@ -132,7 +120,7 @@ export default async function DashboardPage() {
     const discount = base * ((c.discountRate ?? 0) / 100)
     const revenue = base - discount
     userMap[uid].thisMonth += revenue
-    userMap[uid].lastMonth += revenue // 前月も同じ月額で計算
+    userMap[uid].lastMonth += revenue
     if (c.contractStart && new Date(c.contractStart) >= thisMonthStart && new Date(c.contractStart) <= thisMonthEnd) {
       userMap[uid].newThisMonth++
     }
@@ -194,46 +182,6 @@ export default async function DashboardPage() {
               <div className="text-2xl font-bold text-gray-900">{totalCompanies}<span className="text-sm font-normal ml-1">社</span></div>
               <div className="text-xs text-gray-400 mt-1">契約中 {totalContracted} / アプローチ中 {totalApproaching}</div>
             </div>
-          </div>
-
-          {/* 担当者別売上 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">担当者別 今月粗利</h2>
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-100">
-                <tr>
-                  <th className="text-left pb-2 text-xs font-medium text-gray-400">担当者</th>
-                  <th className="text-right pb-2 text-xs font-medium text-gray-400">今月</th>
-                  <th className="text-right pb-2 text-xs font-medium text-gray-400">前月</th>
-                  <th className="text-right pb-2 text-xs font-medium text-gray-400">前月比</th>
-                  <th className="text-right pb-2 text-xs font-medium text-gray-400">新規</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {userStats.map(u => {
-                  const diff = u.lastMonth > 0 ? ((u.thisMonth - u.lastMonth) / u.lastMonth) * 100 : 0
-                  const diffStr = diff === 0 ? "+0.0%" : diff > 0 ? "+" + diff.toFixed(1) + "%" : diff.toFixed(1) + "%"
-                  return (
-                    <tr key={u.name} className="hover:bg-gray-50">
-                      <td className="py-3 font-medium text-gray-900">{u.name}</td>
-                      <td className="py-3 text-right font-bold text-gray-900">¥{fmt(u.thisMonth)}</td>
-                      <td className="py-3 text-right text-gray-400">¥{fmt(u.lastMonth)}</td>
-                      <td className={`py-3 text-right font-medium ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-500" : "text-gray-400"}`}>{diffStr}</td>
-                      <td className="py-3 text-right text-gray-600">{u.newThisMonth}件</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              <tfoot className="border-t border-gray-200">
-                <tr>
-                  <td className="pt-3 text-xs font-medium text-gray-500">合計</td>
-                  <td className="pt-3 text-right font-bold text-blue-700">¥{fmt(allThisMonthRevenue)}</td>
-                  <td className="pt-3 text-right font-bold text-gray-400">¥{fmt(allLastMonthRevenue)}</td>
-                  <td className="pt-3"></td>
-                  <td className="pt-3 text-right font-bold text-gray-600">{allNewThisMonth}件</td>
-                </tr>
-              </tfoot>
-            </table>
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-4">
@@ -312,7 +260,7 @@ export default async function DashboardPage() {
           </div>
 
           {/* 応募数ゼロアラート */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">
               ⚠️ 応募数ゼロ企業（{lastMonthYear}年{lastMonth}月）
               <span className="ml-2 text-xs font-normal text-gray-400">{zeroApplyAlerts.length}社</span>
@@ -345,6 +293,46 @@ export default async function DashboardPage() {
                 </tbody>
               </table>
             )}
+          </div>
+
+          {/* 担当者別売上（一番下） */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">担当者別 今月売上</h2>
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-100">
+                <tr>
+                  <th className="text-left pb-2 text-xs font-medium text-gray-400">担当者</th>
+                  <th className="text-right pb-2 text-xs font-medium text-gray-400">今月</th>
+                  <th className="text-right pb-2 text-xs font-medium text-gray-400">前月</th>
+                  <th className="text-right pb-2 text-xs font-medium text-gray-400">前月比</th>
+                  <th className="text-right pb-2 text-xs font-medium text-gray-400">新規</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {userStats.map(u => {
+                  const diff = u.lastMonth > 0 ? ((u.thisMonth - u.lastMonth) / u.lastMonth) * 100 : 0
+                  const diffStr = diff === 0 ? "+0.0%" : diff > 0 ? "+" + diff.toFixed(1) + "%" : diff.toFixed(1) + "%"
+                  return (
+                    <tr key={u.name} className="hover:bg-gray-50">
+                      <td className="py-3 font-medium text-gray-900">{u.name}</td>
+                      <td className="py-3 text-right font-bold text-gray-900">¥{fmt(u.thisMonth)}</td>
+                      <td className="py-3 text-right text-gray-400">¥{fmt(u.lastMonth)}</td>
+                      <td className={`py-3 text-right font-medium ${diff > 0 ? "text-green-600" : diff < 0 ? "text-red-500" : "text-gray-400"}`}>{diffStr}</td>
+                      <td className="py-3 text-right text-gray-600">{u.newThisMonth}件</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot className="border-t border-gray-200">
+                <tr>
+                  <td className="pt-3 text-xs font-medium text-gray-500">合計</td>
+                  <td className="pt-3 text-right font-bold text-blue-700">¥{fmt(allThisMonthRevenue)}</td>
+                  <td className="pt-3 text-right font-bold text-gray-400">¥{fmt(allLastMonthRevenue)}</td>
+                  <td className="pt-3"></td>
+                  <td className="pt-3 text-right font-bold text-gray-600">{allNewThisMonth}件</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
 
         </div>
