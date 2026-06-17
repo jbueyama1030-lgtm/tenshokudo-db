@@ -26,8 +26,11 @@ const TEMP_LABELS: Record<string, { label: string; cls: string }> = {
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<{ user?: string; status?: string; q?: string; temp?: string }> }) {
   const session = await auth()
   if (!session) redirect("/login")
+
   const params = await searchParams
-  const selectedUser = params.user ?? "all"
+
+  // デフォルトは自分のuserIdを選択
+  const selectedUser = params.user ?? session.user.id
   const selectedStatus = params.status ?? "all"
   const searchQuery = params.q ?? ""
   const selectedTemp = params.temp ?? "all"
@@ -65,7 +68,6 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     { key: "cold", label: "❄️ コールド" },
   ]
 
-  // 現在のフィルター状態を保持したURLを生成
   const buildUrl = (overrides: Record<string, string>) => {
     const p = new URLSearchParams()
     if (selectedUser !== "all") p.set("user", selectedUser)
