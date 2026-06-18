@@ -49,6 +49,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       persona: body.persona ?? [],
       media: body.media || null,
       phone: body.phone || null,
+      contactPerson: body.contactPerson || null,
+      contactPosition: body.contactPosition || null,
       address: body.address || null,
       memo: body.memo || null,
       applyCount: body.applyCount ?? 0,
