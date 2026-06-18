@@ -29,8 +29,8 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
 
   const params = await searchParams
 
-  // デフォルトは自分のuserIdを選択
-  const selectedUser = params.user ?? session.user.id
+  // デフォルト（パラメータ無し）は自分。user=all のときは全員
+  const selectedUser = params.user === undefined ? session.user.id : params.user
   const selectedStatus = params.status ?? "all"
   const searchQuery = params.q ?? ""
   const selectedTemp = params.temp ?? "all"
@@ -70,12 +70,12 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
 
   const buildUrl = (overrides: Record<string, string>) => {
     const p = new URLSearchParams()
-    if (selectedUser !== "all") p.set("user", selectedUser)
+    p.set("user", selectedUser)
     if (selectedStatus !== "all") p.set("status", selectedStatus)
     if (searchQuery) p.set("q", searchQuery)
     if (selectedTemp !== "all") p.set("temp", selectedTemp)
     Object.entries(overrides).forEach(([k, v]) => {
-      if (v === "all" || v === "") p.delete(k)
+      if (k !== "user" && (v === "all" || v === "")) p.delete(k)
       else p.set(k, v)
     })
     const str = p.toString()
