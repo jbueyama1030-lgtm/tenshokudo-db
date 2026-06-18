@@ -24,7 +24,8 @@ model Company {
   status    String  @default("approaching")
   userId    String
   user      User    @relation(fields: [userId], references: [id])
-  contractNote  String?  @db.Text
+  contactPerson    String?
+  contactPosition  String?
 
   // 連絡先
   phone   String?
@@ -53,6 +54,7 @@ model Company {
   // 契約期間
   contractStart   DateTime?
   contractRenewal DateTime?
+  contractNote  String?  @db.Text
 
   // 採用実績（累計）
   persona    String[]
