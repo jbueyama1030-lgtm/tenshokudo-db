@@ -268,14 +268,14 @@ export default function CompanyDetailPage() {
             <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
             <div className="grid grid-cols-3 gap-4">
               <Field label="企業名">
-                {editing ? <input value={form.name ?? ""} onChange={e => set("name", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900 font-medium">{company.name}</p>}
+                {editing ? <input value={form.name ?? ""} onChange={e => set("name", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900 font-medium">{company.name}</p>}
               </Field>
               <Field label="企業ID">
-                {editing ? <input value={form.companyId ?? ""} onChange={e => set("companyId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.companyId ?? "-"}</p>}
+                {editing ? <input value={form.companyId ?? ""} onChange={e => set("companyId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.companyId ?? "-"}</p>}
               </Field>
               <Field label="ステータス">
                 {editing ? (
-                  <select value={form.status ?? ""} onChange={e => set("status", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <select value={form.status ?? ""} onChange={e => set("status", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
                     <option value="approaching">📋 アプローチ中</option>
                     <option value="contracted">✅ 契約中</option>
                     <option value="delisted">📉 掲載落ち</option>
@@ -284,25 +284,25 @@ export default function CompanyDetailPage() {
               </Field>
               <Field label="担当者">
                 {editing ? (
-                  <select value={form.userId ?? ""} onChange={e => set("userId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <select value={form.userId ?? ""} onChange={e => set("userId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 ) : <p className="text-sm text-gray-900">{company.user.name}</p>}
               </Field>
               <Field label="電話番号">
-                {editing ? <input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.phone ?? "-"}</p>}
+                {editing ? <input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.phone ?? "-"}</p>}
               </Field>
               <Field label="住所">
-                {editing ? <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
+                {editing ? <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
               </Field>
               <Field label="保有車両数">
-                {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
+                {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
               </Field>
               <Field label="ドライバー数">
-                {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
+                {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
               </Field>
               <Field label="年間採用目標">
-                {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
+                {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
               </Field>
             </div>
           </div>
@@ -312,7 +312,7 @@ export default function CompanyDetailPage() {
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="text-sm font-semibold text-gray-700 mb-3">採用課題</h2>
               {editing
-                ? <textarea value={form.adoptionChallenge ?? ""} onChange={e => set("adoptionChallenge", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="採用における課題を記録..." />
+                ? <textarea value={form.adoptionChallenge ?? ""} onChange={e => set("adoptionChallenge", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="採用における課題を記録..." />
                 : <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{company.adoptionChallenge || "-"}</p>}
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -342,7 +342,7 @@ export default function CompanyDetailPage() {
               <div>
                 <div className="text-xs text-gray-400 mb-1">配車割合</div>
                 {editing
-                  ? <input value={form.dispatchRatio ?? ""} onChange={e => set("dispatchRatio", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: GO 60% / Uber 40%" />
+                  ? <input value={form.dispatchRatio ?? ""} onChange={e => set("dispatchRatio", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: GO 60% / Uber 40%" />
                   : <p className="text-sm text-gray-700">{company.dispatchRatio || "-"}</p>}
               </div>
             </div>
@@ -377,7 +377,7 @@ export default function CompanyDetailPage() {
                       type="number"
                       value={(form.driverSales as DriverSales)?.monthlyRevenue ?? ""}
                       onChange={e => setDriverSales("monthlyRevenue", e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
                       placeholder="例: 9600000"
                     />
                   </Field>
@@ -386,7 +386,7 @@ export default function CompanyDetailPage() {
                       type="number"
                       value={(form.driverSales as DriverSales)?.annualRevenue ?? ""}
                       onChange={e => setDriverSales("annualRevenue", e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
                       placeholder="例: 115200000"
                     />
                   </Field>
@@ -410,7 +410,7 @@ export default function CompanyDetailPage() {
                               type="number"
                               value={(form.driverSales as DriverSales)?.shifts?.[shift]?.top ?? ""}
                               onChange={e => setDriverShift(shift, "top", e.target.value)}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs"
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900"
                               placeholder="例: 100"
                             />
                           </td>
@@ -419,7 +419,7 @@ export default function CompanyDetailPage() {
                               type="number"
                               value={(form.driverSales as DriverSales)?.shifts?.[shift]?.avg ?? ""}
                               onChange={e => setDriverShift(shift, "avg", e.target.value)}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs"
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900"
                               placeholder="例: 70"
                             />
                           </td>
@@ -495,10 +495,10 @@ export default function CompanyDetailPage() {
               <tbody className="divide-y divide-gray-100">
                 {(editing ? form.competitorMedia ?? [] : company.competitorMedia ?? []).map((m, i) => (
                   <tr key={i}>
-                    <td className="px-3 py-2">{editing ? <input value={m.name} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs" /> : m.name}</td>
-                    <td className="px-3 py-2">{editing ? <input value={m.monthly ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], monthly: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-24 border border-gray-200 rounded px-2 py-1 text-xs" placeholder="円" /> : (m.monthly != null ? "¥" + fmt(m.monthly) : "-")}</td>
-                    <td className="px-3 py-2">{editing ? <input value={m.costPerHire ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], costPerHire: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-28 border border-gray-200 rounded px-2 py-1 text-xs" placeholder="円" /> : (m.costPerHire != null ? "¥" + fmt(m.costPerHire) : "-")}</td>
-                    <td className="px-3 py-2">{editing ? <input value={m.note} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], note: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs" /> : m.note}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.name} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" /> : m.name}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.monthly ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], monthly: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-24 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.monthly != null ? "¥" + fmt(m.monthly) : "-")}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.costPerHire ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], costPerHire: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-28 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.costPerHire != null ? "¥" + fmt(m.costPerHire) : "-")}</td>
+                    <td className="px-3 py-2">{editing ? <input value={m.note} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], note: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" /> : m.note}</td>
                     {editing && <td className="px-3 py-2"><button type="button" onClick={() => set("competitorMedia", (form.competitorMedia ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs hover:text-red-600">削除</button></td>}
                   </tr>
                 ))}
@@ -527,7 +527,7 @@ export default function CompanyDetailPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="プラン">
                     {editing
-                      ? <select value={form.planName ?? ""} onChange={e => set("planName", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                      ? <select value={form.planName ?? ""} onChange={e => set("planName", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
                           <option value="">未設定</option>
                           <option>ライト</option><option>スタンダード</option><option>ハイグレード</option>
                         </select>
@@ -535,7 +535,7 @@ export default function CompanyDetailPage() {
                   </Field>
                   <Field label="月額掲載料">
                     {editing
-                      ? <input type="number" value={form.monthlyFee ?? ""} onChange={e => set("monthlyFee", Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="円" />
+                      ? <input type="number" value={form.monthlyFee ?? ""} onChange={e => set("monthlyFee", Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="円" />
                       : <p className="text-sm text-gray-900">{company.monthlyFee != null ? "¥" + fmt(company.monthlyFee) : "-"}</p>}
                   </Field>
                 </div>
@@ -572,7 +572,7 @@ export default function CompanyDetailPage() {
                 </div>
                 <Field label="割引備考">
                   {editing
-                    ? <input value={form.discountNote ?? ""} onChange={e => set("discountNote", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 3年契約5%OFF" />
+                    ? <input value={form.discountNote ?? ""} onChange={e => set("discountNote", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 3年契約5%OFF" />
                     : <p className="text-sm text-gray-900">{company.discountNote || "-"}</p>}
                 </Field>
               </div>
@@ -625,7 +625,7 @@ export default function CompanyDetailPage() {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <Field label="温度感">
                 {editing
-                  ? <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  ? <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
                       <option value="">未設定</option>
                       <option value="hot">🔥 ホット</option>
                       <option value="warm">☀️ ウォーム</option>
@@ -636,15 +636,15 @@ export default function CompanyDetailPage() {
                     : <p className="text-sm text-gray-900">-</p>}
               </Field>
               <Field label="次回アクション">
-                {editing ? <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="例: 資料送付" /> : <p className="text-sm text-gray-900">{company.nextAction ?? "-"}</p>}
+                {editing ? <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 資料送付" /> : <p className="text-sm text-gray-900">{company.nextAction ?? "-"}</p>}
               </Field>
               <Field label="次回アクション日">
-                {editing ? <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" /> : <p className="text-sm text-gray-900">{company.nextActionDate?.slice(0, 10) ?? "-"}</p>}
+                {editing ? <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.nextActionDate?.slice(0, 10) ?? "-"}</p>}
               </Field>
             </div>
             <Field label="商談メモ">
               {editing
-                ? <textarea value={form.negotiationMemo ?? ""} onChange={e => set("negotiationMemo", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="商談の詳細を記録..." />
+                ? <textarea value={form.negotiationMemo ?? ""} onChange={e => set("negotiationMemo", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="商談の詳細を記録..." />
                 : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.negotiationMemo ?? "-"}</p>}
             </Field>
           </div>
@@ -653,7 +653,7 @@ export default function CompanyDetailPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">メモ</h2>
             {editing
-              ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
               : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
           </div>
         </div>
