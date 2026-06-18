@@ -44,7 +44,6 @@ type Company = {
   options: Option[]
   contractStart: string | null
   contractRenewal: string | null
-  contractRenewal: string | null
   contractNote: string | null
   applyCount: number
   hireCount: number
