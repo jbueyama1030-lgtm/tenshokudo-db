@@ -73,6 +73,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       options: body.options ?? [],
       contractStart: body.contractStart ? new Date(body.contractStart) : null,
       contractRenewal: body.contractRenewal ? new Date(body.contractRenewal) : null,
+      contractNote: body.contractNote || null,
       driverSales: body.driverSales ?? null,
     },
     include: { user: { select: { id: true, name: true } } },

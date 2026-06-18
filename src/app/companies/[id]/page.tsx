@@ -44,6 +44,8 @@ type Company = {
   options: Option[]
   contractStart: string | null
   contractRenewal: string | null
+  contractRenewal: string | null
+  contractNote: string | null
   applyCount: number
   hireCount: number
   temperature: string | null
@@ -595,6 +597,12 @@ export default function CompanyDetailPage() {
                             )}
                           </div>}
                     </Field>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="text-xs text-gray-400 mb-1">契約期間備考</div>
+                    {editing
+                      ? <textarea value={form.contractNote ?? ""} onChange={e => set("contractNote", e.target.value)} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 初年度のみ半年契約、更新時に再見積もり等" />
+                      : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.contractNote || "-"}</p>}
                   </div>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">

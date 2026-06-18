@@ -24,6 +24,7 @@ model Company {
   status    String  @default("approaching")
   userId    String
   user      User    @relation(fields: [userId], references: [id])
+  contractNote  String?  @db.Text
 
   // 連絡先
   phone   String?
