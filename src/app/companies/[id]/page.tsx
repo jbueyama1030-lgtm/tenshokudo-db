@@ -497,8 +497,8 @@ export default function CompanyDetailPage() {
                 {(editing ? form.competitorMedia ?? [] : company.competitorMedia ?? []).map((m, i) => (
                   <tr key={i}>
                     <td className="px-3 py-2">{editing ? <input value={m.name} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" /> : m.name}</td>
-                    <td className="px-3 py-2">{editing ? <input value={m.monthly ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], monthly: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-24 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.monthly != null ? "¥" + fmt(m.monthly) : "-")}</td>
-                    <td className="px-3 py-2">{editing ? <input value={m.costPerHire ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], costPerHire: Number(e.target.value) }; set("competitorMedia", arr) }} className="w-28 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.costPerHire != null ? "¥" + fmt(m.costPerHire) : "-")}</td>
+                    <td className="px-3 py-2">{editing ? <input type="number" value={m.monthly ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], monthly: e.target.value === "" ? null : Number(e.target.value) }; set("competitorMedia", arr) }} className="w-24 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.monthly != null ? "¥" + fmt(m.monthly) : "-")}</td>
+                    <td className="px-3 py-2">{editing ? <input type="number" value={m.costPerHire ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], costPerHire: e.target.value === "" ? null : Number(e.target.value) }; set("competitorMedia", arr) }} className="w-28 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.costPerHire != null ? "¥" + fmt(m.costPerHire) : "-")}</td>
                     <td className="px-3 py-2">{editing ? <input value={m.note} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], note: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" /> : m.note}</td>
                     {editing && <td className="px-3 py-2"><button type="button" onClick={() => set("competitorMedia", (form.competitorMedia ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs hover:text-red-600">削除</button></td>}
                   </tr>
@@ -509,7 +509,7 @@ export default function CompanyDetailPage() {
             <div className="mt-3 flex items-center gap-3 pt-3 border-t border-gray-100">
               <span className="text-xs text-gray-400">転職道の採用単価：</span>
               {editing
-                ? <input type="number" value={form.tenshokudoCostPerHire ?? ""} onChange={e => set("tenshokudoCostPerHire", e.target.value)} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36" placeholder="円" />
+                ? <input type="number" value={form.tenshokudoCostPerHire ?? ""} onChange={e => set("tenshokudoCostPerHire", e.target.value === "" ? null : Number(e.target.value))} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 text-gray-900" placeholder="円" />
                 : <span className="text-base font-bold text-blue-700">{company.tenshokudoCostPerHire != null ? "¥" + fmt(company.tenshokudoCostPerHire) : "-"}</span>}
             </div>
           </div>
@@ -536,7 +536,7 @@ export default function CompanyDetailPage() {
                   </Field>
                   <Field label="月額掲載料">
                     {editing
-                      ? <input type="number" value={form.monthlyFee ?? ""} onChange={e => set("monthlyFee", Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="円" />
+                      ? <input type="number" value={form.monthlyFee ?? ""} onChange={e => set("monthlyFee", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="円" />
                       : <p className="text-sm text-gray-900">{company.monthlyFee != null ? "¥" + fmt(company.monthlyFee) : "-"}</p>}
                   </Field>
                 </div>
@@ -548,7 +548,7 @@ export default function CompanyDetailPage() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">割引率</span>
                     {editing
-                      ? <input type="number" value={form.discountRate ?? ""} onChange={e => set("discountRate", Number(e.target.value))} className="border border-gray-300 rounded px-2 py-1 text-xs w-16" placeholder="%" />
+                      ? <input type="number" value={form.discountRate ?? ""} onChange={e => set("discountRate", e.target.value === "" ? null : Number(e.target.value))} className="border border-gray-300 rounded px-2 py-1 text-xs w-16 text-gray-900" placeholder="%" />
                       : <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full">{company.discountRate ?? 0}%</span>}
                   </div>
                   <span className="text-sm text-red-500 font-medium">－ ¥{fmt(discountAmt)}</span>
@@ -559,8 +559,8 @@ export default function CompanyDetailPage() {
                     <div key={i} className="flex items-center justify-between mb-1.5">
                       {editing
                         ? <>
-                            <input value={op.name} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs flex-1 mr-2" placeholder="オプション名" />
-                            <input type="number" value={op.amount} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], amount: Number(e.target.value) }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs w-28 mr-2" placeholder="金額" />
+                            <input value={op.name} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs flex-1 mr-2 text-gray-900" placeholder="オプション名" />
+                            <input type="number" value={op.amount} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], amount: e.target.value === "" ? 0 : Number(e.target.value) }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs w-28 mr-2 text-gray-900" placeholder="金額" />
                             <button type="button" onClick={() => set("options", (form.options ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs">削除</button>
                           </>
                         : <>
@@ -583,12 +583,12 @@ export default function CompanyDetailPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="契約開始日">
                       {editing
-                        ? <input type="date" value={form.contractStart?.slice(0, 10) ?? ""} onChange={e => set("contractStart", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        ? <input type="date" value={form.contractStart?.slice(0, 10) ?? ""} onChange={e => set("contractStart", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" />
                         : <p className="text-sm text-gray-900">{company.contractStart?.slice(0, 10) ?? "-"}</p>}
                     </Field>
                     <Field label="次回更新日">
                       {editing
-                        ? <input type="date" value={form.contractRenewal?.slice(0, 10) ?? ""} onChange={e => set("contractRenewal", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                        ? <input type="date" value={form.contractRenewal?.slice(0, 10) ?? ""} onChange={e => set("contractRenewal", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" />
                         : <div>
                             <p className="text-sm text-gray-900">{company.contractRenewal?.slice(0, 10) ?? "-"}</p>
                             {renewalDays != null && (
