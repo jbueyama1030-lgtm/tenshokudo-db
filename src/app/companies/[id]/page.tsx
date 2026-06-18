@@ -26,6 +26,8 @@ type Company = {
   status: string
   userId: string
   user: { id: string; name: string }
+  contactPerson: string | null
+  contactPosition: string | null
   phone: string | null
   address: string | null
   vehicleCount: number | null
@@ -330,6 +332,12 @@ export default function CompanyDetailPage() {
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 ) : <p className="text-sm text-gray-900">{company.user.name}</p>}
+              </Field>
+              <Field label="企業担当者">
+                {editing ? <input value={form.contactPerson ?? ""} onChange={e => set("contactPerson", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 山田太郎" /> : <p className="text-sm text-gray-900">{company.contactPerson ?? "-"}</p>}
+              </Field>
+              <Field label="役職">
+                {editing ? <input value={form.contactPosition ?? ""} onChange={e => set("contactPosition", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 採用部長" /> : <p className="text-sm text-gray-900">{company.contactPosition ?? "-"}</p>}
               </Field>
               <Field label="電話番号">
                 {editing ? <input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.phone ?? "-"}</p>}
