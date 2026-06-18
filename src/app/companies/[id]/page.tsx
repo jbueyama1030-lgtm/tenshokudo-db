@@ -158,6 +158,47 @@ function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
   )
 }
 
+function TenshokudoCostPerHire({ annualRevenue, records }: { annualRevenue: number; records: MonthlyRecord[] }) {
+  const years = [...new Set(records.map(r => r.year))].sort()
+  const [selectedYear, setSelectedYear] = useState(years.length > 0 ? years[years.length - 1] : null)
+
+  if (years.length === 0) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-400">転職道の採用単価：</span>
+        <span className="text-sm text-gray-400">月次実績データがありません</span>
+      </div>
+    )
+  }
+
+  const yearHires = records.filter(r => r.year === selectedYear).reduce((s, r) => s + r.hireCount, 0)
+  const costPerHire = yearHires > 0 ? Math.round(annualRevenue / yearHires) : null
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-gray-400">転職道の採用単価（年間掲載料 ÷ 入社数）</span>
+        <div className="flex gap-1">
+          {years.map(y => (
+            <button key={y} type="button" onClick={() => setSelectedYear(y)}
+              className={`px-2.5 py-0.5 text-xs rounded-full border transition-colors ${selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400"}`}>
+              {y}年
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-baseline gap-3">
+        {costPerHire != null
+          ? <span className="text-base font-bold text-blue-700">¥{fmt(costPerHire)}</span>
+          : <span className="text-sm text-gray-400">算出不可（入社数0）</span>}
+        <span className="text-xs text-gray-400">
+          {selectedYear}年：年間掲載料 ¥{fmt(annualRevenue)} ÷ 入社 {yearHires}名
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -506,11 +547,8 @@ export default function CompanyDetailPage() {
               </tbody>
             </table>
             {editing && <button type="button" onClick={() => set("competitorMedia", [...(form.competitorMedia ?? []), { name: "", monthly: null, costPerHire: null, note: "" }])} className="text-xs text-blue-600 hover:underline">＋ 媒体を追加</button>}
-            <div className="mt-3 flex items-center gap-3 pt-3 border-t border-gray-100">
-              <span className="text-xs text-gray-400">転職道の採用単価：</span>
-              {editing
-                ? <input type="number" value={form.tenshokudoCostPerHire ?? ""} onChange={e => set("tenshokudoCostPerHire", e.target.value === "" ? null : Number(e.target.value))} className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36 text-gray-900" placeholder="円" />
-                : <span className="text-base font-bold text-blue-700">{company.tenshokudoCostPerHire != null ? "¥" + fmt(company.tenshokudoCostPerHire) : "-"}</span>}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <TenshokudoCostPerHire annualRevenue={totalRevenue} records={company.monthlyRecords ?? []} />
             </div>
           </div>
 
