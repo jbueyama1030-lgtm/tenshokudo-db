@@ -12,6 +12,7 @@ export async function POST(req: Request) {
 
   // 企業ID × 年月 ごとに集計
   const recordMap: Record<string, {
+    companyId: string
     year: number
     month: number
     applyCount: number
@@ -27,16 +28,17 @@ export async function POST(req: Request) {
 
     if (!companyId || !dateStr) continue
 
-    // 年月をパース
-    const match = dateStr.match(/(\d{4})\/(\d{2})/)
+    // 年月をパース（月のゼロ埋めなしにも対応）
+    const match = dateStr.match(/(\d{4})\/(\d{1,2})/)
     if (!match) continue
     const year = parseInt(match[1])
     const month = parseInt(match[2])
 
-    const key = `${companyId}_${year}_${month}`
+    // keyの区切り文字にIDが依存しないよう、companyIdはdataに保持する
+    const key = companyId + "__" + year + "__" + month
 
     if (!recordMap[key]) {
-      recordMap[key] = { year, month, applyCount: 0, hireCount: 0, inflow: {} }
+      recordMap[key] = { companyId, year, month, applyCount: 0, hireCount: 0, inflow: {} }
     }
 
     recordMap[key].applyCount++
@@ -49,9 +51,10 @@ export async function POST(req: Request) {
   }
 
   const results = { success: 0, notFound: 0, error: 0 }
+  const notFoundIds: string[] = []
 
-  for (const [key, data] of Object.entries(recordMap)) {
-    const companyId = key.split("_")[0]
+  for (const data of Object.values(recordMap)) {
+    const companyId = data.companyId
 
     const company = await prisma.company.findUnique({
       where: { companyId },
@@ -59,6 +62,7 @@ export async function POST(req: Request) {
 
     if (!company) {
       results.notFound++
+      notFoundIds.push(companyId)
       continue
     }
 
@@ -91,5 +95,9 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json(results)
+  // notFoundIdsは重複を除いて返す（同じIDが複数月あるため）
+  return NextResponse.json({
+    ...results,
+    notFoundIds: [...new Set(notFoundIds)],
+  })
 }
