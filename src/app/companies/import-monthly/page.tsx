@@ -6,7 +6,7 @@ export default function ImportMonthlyPage() {
   const [preview, setPreview] = useState<string[][]>([])
   const [fileName, setFileName] = useState("")
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ success: number; notFound: number; error: number } | null>(null)
+  const [result, setResult] = useState<{ success: number; notFound: number; error: number; notFoundIds?: string[] } | null>(null)
   const [error, setError] = useState("")
   const [userName, setUserName] = useState("")
   const [year, setYear] = useState(new Date().getFullYear())
@@ -115,6 +115,16 @@ export default function ImportMonthlyPage() {
                 </div>
               </div>
               <a href="/companies" className="mt-4 inline-block text-sm text-blue-600 hover:underline">企業一覧を見る →</a>
+              {result.notFoundIds && result.notFoundIds.length > 0 && (
+                <div className="mt-4 bg-white rounded-lg p-3">
+                  <div className="text-xs font-semibold text-gray-600 mb-2">
+                    未発見だった企業ID（{result.notFoundIds.length}件）
+                  </div>
+                  <div className="text-xs text-gray-500 break-all leading-relaxed max-h-40 overflow-y-auto">
+                    {result.notFoundIds.join(", ")}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
