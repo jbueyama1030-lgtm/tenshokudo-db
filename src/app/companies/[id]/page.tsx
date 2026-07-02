@@ -49,6 +49,7 @@ type Company = {
   contractNote: string | null
   applyCount: number
   hireCount: number
+  workplaceCertLevel: number
   temperature: string | null
   negotiationMemo: string | null
   nextAction: string | null
@@ -80,6 +81,19 @@ function fmt(n: number | null | undefined) {
   if (n == null) return "-"
   return Number(n).toLocaleString("ja-JP")
 }
+
+function certStars(level: number | null | undefined): string {
+  const n = level ?? 0
+  if (n <= 0) return "未取得"
+  return "★".repeat(n)
+}
+
+const CERT_OPTIONS = [
+  { value: 0, label: "未取得" },
+  { value: 1, label: "★" },
+  { value: 2, label: "★★" },
+  { value: 3, label: "★★★" },
+]
 
 function daysUntil(dateStr: string | null) {
   if (!dateStr) return null
@@ -353,6 +367,17 @@ export default function CompanyDetailPage() {
               </Field>
               <Field label="年間採用目標">
                 {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
+              </Field>
+              <Field label="働きやすい職場認証">
+                {editing ? (
+                  <select value={form.workplaceCertLevel ?? 0} onChange={e => set("workplaceCertLevel", Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    {CERT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                ) : (
+                  (company.workplaceCertLevel ?? 0) > 0
+                    ? <p className="text-sm text-yellow-500 font-medium">{certStars(company.workplaceCertLevel)}</p>
+                    : <p className="text-sm text-gray-400">未取得</p>
+                )}
               </Field>
             </div>
           </div>

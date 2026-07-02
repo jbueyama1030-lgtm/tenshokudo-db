@@ -23,6 +23,13 @@ const TEMP_LABELS: Record<string, { label: string; cls: string }> = {
   cold: { label: "❄️ コールド", cls: "bg-blue-100 text-blue-800" },
 }
 
+// 働きやすい職場認証の表示（0=未取得, 1〜3=★の数）
+function certLabel(level: number | null | undefined): string {
+  const n = level ?? 0
+  if (n <= 0) return "未取得"
+  return "★".repeat(n)
+}
+
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<{ user?: string; status?: string; q?: string; temp?: string }> }) {
   const session = await auth()
   if (!session) redirect("/login")
@@ -158,6 +165,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">会社名</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">ステータス</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">温度感</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">認証</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">担当者</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">応募数</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">入社数</th>
@@ -180,6 +188,11 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                         {company.temperature
                           ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_LABELS[company.temperature]?.cls ?? "")}>{TEMP_LABELS[company.temperature]?.label}</span>
                           : <span className="text-xs text-gray-300">-</span>}
+                      </td>
+                      <td className="px-4 py-3 text-sm whitespace-nowrap">
+                        {(company.workplaceCertLevel ?? 0) > 0
+                          ? <span className="text-yellow-500">{certLabel(company.workplaceCertLevel)}</span>
+                          : <span className="text-xs text-gray-300">未取得</span>}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{company.user.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{totalApply}</td>

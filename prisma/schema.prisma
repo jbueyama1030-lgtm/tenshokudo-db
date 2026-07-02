@@ -26,6 +26,7 @@ model Company {
   user      User    @relation(fields: [userId], references: [id])
   contactPerson    String?
   contactPosition  String?
+  workplaceCertLevel Int @default(0)
 
   // 連絡先
   phone   String?
