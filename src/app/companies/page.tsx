@@ -50,7 +50,10 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
         ]
       } : {}),
     },
-    include: { user: { select: { id: true, name: true } } },
+    include: {
+      user: { select: { id: true, name: true } },
+      monthlyRecords: { select: { applyCount: true, hireCount: true } },
+    },
     orderBy: { updatedAt: "desc" },
   })
 
@@ -161,7 +164,10 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {companies.map((company) => (
+                  {companies.map((company) => {
+                    const totalApply = company.monthlyRecords.reduce((sum, r) => sum + (r.applyCount ?? 0), 0)
+                    const totalHire = company.monthlyRecords.reduce((sum, r) => sum + (r.hireCount ?? 0), 0)
+                    return (
                     <tr key={company.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-500">{company.companyId ?? "-"}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
@@ -176,10 +182,11 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                           : <span className="text-xs text-gray-300">-</span>}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{company.user.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.applyCount}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.hireCount}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{totalApply}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{totalHire}</td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
