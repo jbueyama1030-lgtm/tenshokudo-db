@@ -6,10 +6,16 @@ import { useEffect, useState } from "react"
 export default function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname()
   const [role, setRole] = useState<string>("")
+  const [unassignedCount, setUnassignedCount] = useState(0)
 
   useEffect(() => {
     fetch("/api/auth/session").then(r => r.json()).then(s => {
       setRole(s?.user?.role ?? "")
+    })
+    fetch("/api/production-tasks").then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        setUnassignedCount(data.filter(t => !t.assignee).length)
+      }
     })
   }, [])
 
@@ -51,7 +57,10 @@ export default function Sidebar({ userName }: { userName?: string }) {
               href={link.href}
               className={"flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors " + (isActive ? "text-white border-[#378ADD] bg-[#378ADD]/10" : "text-white/45 hover:text-white/75 hover:bg-white/5 border-transparent")}
             >
-              {link.label}
+              <span>{link.label}</span>
+              {link.href === "/production" && unassignedCount > 0 && (
+                <span className="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">{unassignedCount}</span>
+              )}
             </a>
           )
         })}
