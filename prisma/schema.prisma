@@ -15,6 +15,8 @@ model User {
   role      String    @default("sales")
   createdAt DateTime  @default(now())
   companies Company[]
+  assignedTasks  ProductionTask[] @relation("TaskAssignee")
+  requestedTasks ProductionTask[] @relation("TaskRequester")
 }
 
 model Company {
@@ -80,6 +82,9 @@ model Company {
   // 月次実績
   monthlyRecords MonthlyRecord[]
 
+  // 制作案件
+  productionTasks ProductionTask[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -98,4 +103,30 @@ model MonthlyRecord {
   updatedAt DateTime @updatedAt
 
   @@unique([companyId, year, month])
+}
+
+model ProductionTask {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+
+  name     String   // 案件名
+  type     String   @default("new")          // new=新規 / revise=修正 / renewal=リニューアル
+  priority String   @default("medium")        // high=高 / medium=中 / low=低
+  status   String   @default("not_started")   // not_started/in_progress/sales_review/client_review/published/paused/stopped
+  memo     String?  @db.Text
+  dueDate     DateTime?  // 納期
+  publishedAt DateTime?  // 公開日
+  stoppedAt   DateTime?  // 掲載停止日
+
+  // 制作担当（未割当null可）
+  assigneeId String?
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  // 依頼営業
+  requesterId String?
+  requester   User?   @relation("TaskRequester", fields: [requesterId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

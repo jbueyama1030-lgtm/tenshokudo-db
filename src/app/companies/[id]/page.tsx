@@ -64,6 +64,38 @@ type Company = {
 
 type User = { id: string; name: string }
 
+// 制作案件の型とラベル
+type ProductionTask = {
+  id: string
+  name: string
+  type: string
+  priority: string
+  status: string
+  memo: string | null
+  dueDate: string | null
+  assignee: { id: string; name: string } | null
+  requester: { id: string; name: string } | null
+  createdAt: string
+}
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  new: "新規", revise: "修正", renewal: "リニューアル",
+}
+const TASK_PRIORITY_LABELS: Record<string, { label: string; cls: string }> = {
+  high: { label: "高", cls: "bg-red-100 text-red-700" },
+  medium: { label: "中", cls: "bg-yellow-100 text-yellow-700" },
+  low: { label: "低", cls: "bg-gray-100 text-gray-600" },
+}
+const TASK_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  not_started: { label: "未着手", cls: "bg-gray-100 text-gray-600" },
+  in_progress: { label: "着手", cls: "bg-blue-100 text-blue-700" },
+  sales_review: { label: "営業確認中", cls: "bg-purple-100 text-purple-700" },
+  client_review: { label: "企業確認中", cls: "bg-indigo-100 text-indigo-700" },
+  published: { label: "公開", cls: "bg-green-100 text-green-700" },
+  paused: { label: "一時停止中", cls: "bg-orange-100 text-orange-700" },
+  stopped: { label: "停止処理済み", cls: "bg-gray-200 text-gray-500" },
+}
+
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   contracted: { label: "✅ 契約中", cls: "bg-green-100 text-green-800" },
   approaching: { label: "📋 アプローチ中", cls: "bg-blue-100 text-blue-800" },
@@ -226,6 +258,9 @@ export default function CompanyDetailPage() {
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState("")
   const [sessionUser, setSessionUser] = useState<{ id: string; role: string } | null>(null)
+  const [tasks, setTasks] = useState<ProductionTask[]>([])
+  const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
+  const [taskLoading, setTaskLoading] = useState(false)
 
   useEffect(() => {
     fetch(`/api/companies/${id}`).then(r => r.json()).then(data => {
@@ -244,9 +279,30 @@ export default function CompanyDetailPage() {
       setUserName(s?.user?.name ?? "")
       setSessionUser({ id: s?.user?.id ?? "", role: s?.user?.role ?? "" })
     })
+    loadTasks()
   }, [id])
 
   const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }))
+
+  const loadTasks = async () => {
+    const res = await fetch(`/api/production-tasks?companyId=${id}`)
+    if (res.ok) setTasks(await res.json())
+  }
+
+  const handleCreateTask = async () => {
+    if (!taskForm.name.trim()) return
+    setTaskLoading(true)
+    const res = await fetch("/api/production-tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...taskForm, companyId: id }),
+    })
+    if (res.ok) {
+      setTaskForm({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
+      await loadTasks()
+    }
+    setTaskLoading(false)
+  }
 
   const handleSave = async () => {
     setLoading(true)
@@ -743,6 +799,89 @@ export default function CompanyDetailPage() {
             {editing
               ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
               : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
+          </div>
+
+          {/* 制作案件 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">🎨 制作案件</h2>
+
+            {/* 起票フォーム */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-5">
+              <div className="text-xs font-medium text-gray-600 mb-3">制作依頼を起票</div>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">案件名 <span className="text-red-400">*</span></label>
+                  <input value={taskForm.name} onChange={e => setTaskForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 求人LP新規制作" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">種別</label>
+                  <select value={taskForm.type} onChange={e => setTaskForm(f => ({ ...f, type: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    <option value="new">新規</option>
+                    <option value="revise">修正</option>
+                    <option value="renewal">リニューアル</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">優先度</label>
+                  <select value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    <option value="high">高</option>
+                    <option value="medium">中</option>
+                    <option value="low">低</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">納期</label>
+                  <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">メモ・依頼内容</label>
+                  <textarea value={taskForm.memo} onChange={e => setTaskForm(f => ({ ...f, memo: e.target.value }))} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="制作担当への依頼内容・参考情報など" />
+                </div>
+              </div>
+              <button onClick={handleCreateTask} disabled={taskLoading || !taskForm.name.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                {taskLoading ? "起票中..." : "＋ 制作依頼を起票"}
+              </button>
+            </div>
+
+            {/* この企業の案件一覧 */}
+            <div className="text-xs font-medium text-gray-600 mb-2">この企業の案件一覧（{tasks.length}件）</div>
+            {tasks.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">まだ制作案件がありません</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">案件名</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">種別</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">優先度</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">ステータス</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">制作担当</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">納期</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {tasks.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-900 font-medium">
+                          {t.name}
+                          {t.memo && <div className="text-xs text-gray-400 font-normal mt-0.5 whitespace-pre-wrap">{t.memo}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{TASK_TYPE_LABELS[t.type] ?? t.type}</td>
+                        <td className="px-3 py-2">
+                          <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (TASK_PRIORITY_LABELS[t.priority]?.cls ?? "")}>{TASK_PRIORITY_LABELS[t.priority]?.label ?? t.priority}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (TASK_STATUS_LABELS[t.status]?.cls ?? "")}>{TASK_STATUS_LABELS[t.status]?.label ?? t.status}</span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{t.assignee ? t.assignee.name : <span className="text-gray-300">未割当</span>}</td>
+                        <td className="px-3 py-2 text-gray-600">{t.dueDate ? t.dueDate.slice(0, 10) : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </main>
