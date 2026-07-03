@@ -27,6 +27,7 @@ model Company {
   contactPerson    String?
   contactPosition  String?
   workplaceCertLevel Int @default(0)
+  websiteUrl String?
 
   // 連絡先
   phone   String?

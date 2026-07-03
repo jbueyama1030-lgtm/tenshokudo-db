@@ -50,6 +50,7 @@ type Company = {
   applyCount: number
   hireCount: number
   workplaceCertLevel: number
+  websiteUrl: string | null
   temperature: string | null
   negotiationMemo: string | null
   nextAction: string | null
@@ -377,6 +378,15 @@ export default function CompanyDetailPage() {
                   (company.workplaceCertLevel ?? 0) > 0
                     ? <p className="text-sm text-yellow-500 font-medium">{certStars(company.workplaceCertLevel)}</p>
                     : <p className="text-sm text-gray-400">未取得</p>
+                )}
+              </Field>
+              <Field label="HP（企業サイト）">
+                {editing ? (
+                  <input value={form.websiteUrl ?? ""} onChange={e => set("websiteUrl", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="https://example.com" />
+                ) : (
+                  company.websiteUrl
+                    ? <a href={company.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">{company.websiteUrl}</a>
+                    : <p className="text-sm text-gray-400">-</p>
                 )}
               </Field>
             </div>
