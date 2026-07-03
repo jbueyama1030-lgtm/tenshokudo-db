@@ -44,17 +44,12 @@ export default function Sidebar({ userName }: { userName?: string }) {
       <nav className="flex-1 py-4 overflow-y-auto">
         <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
         {links.map(link => {
-          const isActive = pathname === link.href ||
-            (link.href === "/companies" ? false : pathname.startsWith(link.href + "/"))
+          const isActive = pathname === link.href || (link.href === "/companies" ? false : pathname.startsWith(link.href + "/"))
           return (
-            
+            <a
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors ${
-                isActive
-                  ? "text-white border-[#378ADD] bg-[#378ADD]/10"
-                  : "text-white/45 hover:text-white/75 hover:bg-white/5 border-transparent"
-              }`}
+              className={"flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors " + (isActive ? "text-white border-[#378ADD] bg-[#378ADD]/10" : "text-white/45 hover:text-white/75 hover:bg-white/5 border-transparent")}
             >
               {link.label}
             </a>
