@@ -1,11 +1,22 @@
 "use client"
 
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 
 export default function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname()
+  const [role, setRole] = useState<string>("")
 
-  const links = [
+  useEffect(() => {
+    fetch("/api/auth/session").then(r => r.json()).then(s => {
+      setRole(s?.user?.role ?? "")
+    })
+  }, [])
+
+  const isProduction = role === "production"
+  const isAdmin = role !== "sales" && role !== "production"
+
+  const salesLinks = [
     { href: "/dashboard", label: "📊 ダッシュボード" },
     { href: "/companies", label: "🏢 企業一覧" },
     { href: "/companies/new", label: "➕ 企業追加" },
@@ -13,6 +24,15 @@ export default function Sidebar({ userName }: { userName?: string }) {
     { href: "/users", label: "👥 ユーザー管理" },
     { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
     { href: "/companies/import-monthly", label: "📈 月次インポート" },
+  ]
+
+  const productionLinks = [
+    { href: "/production", label: "🎨 制作ダッシュボード" },
+  ]
+
+  const links = [
+    ...salesLinks,
+    ...(isProduction || isAdmin ? productionLinks : []),
   ]
 
   return (
@@ -24,10 +44,10 @@ export default function Sidebar({ userName }: { userName?: string }) {
       <nav className="flex-1 py-4 overflow-y-auto">
         <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
         {links.map(link => {
-         const isActive = pathname === link.href ||
-           (link.href === "/companies" ? false : pathname.startsWith(link.href + "/"))
+          const isActive = pathname === link.href ||
+            (link.href === "/companies" ? false : pathname.startsWith(link.href + "/"))
           return (
-            <a
+            
               key={link.href}
               href={link.href}
               className={`flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors ${
