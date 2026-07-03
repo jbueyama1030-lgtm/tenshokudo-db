@@ -110,6 +110,7 @@ export default function UsersPage() {
                   <label className="block text-xs font-medium text-gray-500 mb-1">権限</label>
                   <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="sales">営業</option>
+                    <option value="production">制作</option>
                     <option value="admin">管理者</option>
                   </select>
                 </div>
@@ -137,7 +138,7 @@ export default function UsersPage() {
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{user.name}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                     <td className="px-4 py-3">
-                      <span className={"text-xs px-2 py-1 rounded-full font-medium " + (user.role === "admin" ? "bg-purple-100 text-purple-800" : "bg-gray-100 text-gray-600")}>{user.role === "admin" ? "管理者" : "営業"}</span>
+                      <span className={"text-xs px-2 py-1 rounded-full font-medium " + (user.role === "admin" ? "bg-purple-100 text-purple-800" : user.role === "production" ? "bg-pink-100 text-pink-800" : "bg-gray-100 text-gray-600")}>{user.role === "admin" ? "管理者" : user.role === "production" ? "制作" : "営業"}</span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{new Date(user.createdAt).toLocaleDateString("ja-JP")}</td>
                   </tr>
