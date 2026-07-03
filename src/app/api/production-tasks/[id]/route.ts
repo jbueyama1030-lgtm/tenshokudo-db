@@ -38,6 +38,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const existing = await prisma.productionTask.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    // 案件の編集は制作ロールとadminのみ（営業は起票のみ）
+  const canEdit = session.user.role === "production" || (session.user.role !== "sales" && session.user.role !== "production")
+  if (!canEdit) {
+    return NextResponse.json({ error: "案件を編集する権限がありません" }, { status: 403 })
+  }
 
   // 更新するフィールドだけを組み立てる（送られてきたものだけ反映）
   const data: Record<string, unknown> = {}
@@ -74,6 +79,12 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const existing = await prisma.productionTask.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    // 案件の削除は admin と依頼営業のみ（制作ロールは削除不可）
+  const isAdmin = session.user.role !== "sales" && session.user.role !== "production"
+  const isRequester = existing.requesterId === session.user.id
+  if (!isAdmin && !isRequester) {
+    return NextResponse.json({ error: "この案件を削除する権限がありません" }, { status: 403 })
+  }
 
   await prisma.productionTask.delete({ where: { id } })
   return NextResponse.json({ success: true })

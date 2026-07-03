@@ -37,6 +37,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (session.user.role === "sales" && existing.userId !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
+  // 制作ロールは企業データを編集不可（閲覧のみ）
+  if (session.user.role === "production") {
+    return NextResponse.json({ error: "制作ロールは企業データを編集できません" }, { status: 403 })
+  }
 
   const company = await prisma.company.update({
     where: { id },
@@ -98,6 +102,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   // salesロールは自分担当のみ削除可
   if (session.user.role === "sales" && existing.userId !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+// 制作ロールは企業を削除不可
+  if (session.user.role === "production") {
+    return NextResponse.json({ error: "制作ロールは企業を削除できません" }, { status: 403 })
   }
 
   await prisma.company.delete({ where: { id } })
