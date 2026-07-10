@@ -368,6 +368,8 @@ export default function CompanyDetailPage() {
                 <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
                 <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
               </>
+            ) : sessionUser?.role === "production" ? (
+              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（制作）</span>
             ) : sessionUser?.role !== "sales" || company.userId === sessionUser?.id ? (
               <>
                 <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 編集</button>
