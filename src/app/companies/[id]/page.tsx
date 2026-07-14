@@ -866,7 +866,7 @@ export default function CompanyDetailPage() {
                     {tasks.map(t => (
                       <tr key={t.id} className="hover:bg-gray-50">
                         <td className="px-3 py-2 text-gray-900 font-medium">
-                          {t.name}
+                          <a href={"/production/" + t.id} className="hover:text-blue-600 hover:underline">{t.name}</a>
                           {t.memo && <div className="text-xs text-gray-400 font-normal mt-0.5 whitespace-pre-wrap">{t.memo}</div>}
                         </td>
                         <td className="px-3 py-2 text-gray-600">{TASK_TYPE_LABELS[t.type] ?? t.type}</td>

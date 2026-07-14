@@ -14,6 +14,23 @@ function daysUntil(date: string | Date) {
   return diff
 }
 
+// 制作案件のラベル
+const TASK_TYPE_LABELS: Record<string, string> = { new: "新規", revise: "修正", renewal: "リニューアル" }
+const TASK_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  not_started: { label: "未着手", cls: "bg-gray-100 text-gray-600" },
+  in_progress: { label: "着手", cls: "bg-blue-100 text-blue-700" },
+  sales_review: { label: "営業確認中", cls: "bg-purple-100 text-purple-700" },
+  client_review: { label: "企業確認中", cls: "bg-indigo-100 text-indigo-700" },
+  published: { label: "公開", cls: "bg-green-100 text-green-700" },
+  completed: { label: "完了", cls: "bg-emerald-100 text-emerald-800" },
+  paused: { label: "一時停止中", cls: "bg-orange-100 text-orange-700" },
+  stopped: { label: "停止処理済み", cls: "bg-gray-200 text-gray-500" },
+}
+// 営業がアクションすべきステータス
+const AWAITING_SALES = ["sales_review", "client_review"]
+// 終了扱い（表示しない）
+const CLOSED_STATUSES = ["completed", "stopped"]
+
 export default async function DashboardPage() {
   const session = await auth()
   if (!session) redirect("/login")
@@ -96,6 +113,22 @@ export default async function DashboardPage() {
     orderBy: { nextActionDate: "asc" },
     take: 10,
   })
+
+  // 制作案件（adminは全件、営業は自分が依頼したもののみ）
+  const productionTasks = await prisma.productionTask.findMany({
+    where: {
+      status: { notIn: CLOSED_STATUSES },
+      ...(isAdmin ? {} : { requesterId: userId }),
+    },
+    include: {
+      company: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true } },
+      requester: { select: { id: true, name: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+  })
+  const awaitingSalesTasks = productionTasks.filter(t => AWAITING_SALES.includes(t.status))
+  const inProgressTasks = productionTasks.filter(t => !AWAITING_SALES.includes(t.status))
 
   const lastMonthRecords = await prisma.monthlyRecord.findMany({
     where: { year: lastMonthYear, month: lastMonth },
@@ -257,6 +290,90 @@ export default async function DashboardPage() {
                             {c.nextActionDate ? new Date(c.nextActionDate).toLocaleDateString("ja-JP") : "-"}
                           </span>
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* 制作案件 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">
+              🎨 制作案件
+              <span className="ml-2 text-xs font-normal text-gray-400">{isAdmin ? "全案件" : "自分が依頼"}</span>
+            </h2>
+
+            {/* 確認待ち（あなたの番） */}
+            <div className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-purple-700">⚡ 確認待ち（あなたの番）</span>
+                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">{awaitingSalesTasks.length}</span>
+              </div>
+              {awaitingSalesTasks.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">確認待ちの案件なし</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-100">
+                    <tr>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">案件名</th>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">企業</th>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">制作担当</th>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">ステータス</th>
+                      <th className="text-right pb-2 text-xs font-medium text-gray-400">納期</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {awaitingSalesTasks.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="py-2">
+                          <a href={"/production/" + t.id} className="text-blue-600 hover:underline text-xs font-medium">{t.name}</a>
+                        </td>
+                        <td className="py-2 text-xs text-gray-500">{t.company?.name ?? "-"}</td>
+                        <td className="py-2 text-xs text-gray-500">{t.assignee?.name ?? "未割当"}</td>
+                        <td className="py-2">
+                          <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + (TASK_STATUS_LABELS[t.status]?.cls ?? "")}>{TASK_STATUS_LABELS[t.status]?.label ?? t.status}</span>
+                        </td>
+                        <td className="py-2 text-right text-xs text-gray-500">{t.dueDate ? new Date(t.dueDate).toLocaleDateString("ja-JP") : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* 進行中 */}
+            <div className="border-t border-gray-100 pt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-gray-600">進行中</span>
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{inProgressTasks.length}</span>
+              </div>
+              {inProgressTasks.length === 0 ? (
+                <p className="text-sm text-gray-400 py-2">進行中の案件なし</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="border-b border-gray-100">
+                    <tr>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">案件名</th>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">企業</th>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">制作担当</th>
+                      <th className="text-left pb-2 text-xs font-medium text-gray-400">ステータス</th>
+                      <th className="text-right pb-2 text-xs font-medium text-gray-400">納期</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {inProgressTasks.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="py-2">
+                          <a href={"/production/" + t.id} className="text-blue-600 hover:underline text-xs font-medium">{t.name}</a>
+                        </td>
+                        <td className="py-2 text-xs text-gray-500">{t.company?.name ?? "-"}</td>
+                        <td className="py-2 text-xs text-gray-500">{t.assignee?.name ?? "未割当"}</td>
+                        <td className="py-2">
+                          <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + (TASK_STATUS_LABELS[t.status]?.cls ?? "")}>{TASK_STATUS_LABELS[t.status]?.label ?? t.status}</span>
+                        </td>
+                        <td className="py-2 text-right text-xs text-gray-500">{t.dueDate ? new Date(t.dueDate).toLocaleDateString("ja-JP") : "-"}</td>
                       </tr>
                     ))}
                   </tbody>
