@@ -13,6 +13,7 @@ model User {
   password  String
   name      String
   role      String    @default("sales")
+  chatworkAccountId String?
   createdAt DateTime  @default(now())
   companies Company[]
   assignedTasks  ProductionTask[] @relation("TaskAssignee")

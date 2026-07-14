@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { notifyChatwork, APP_URL } from "@/lib/chatwork"
+import { notifyChatwork, APP_URL, buildMentions, getProductionMembers } from "@/lib/chatwork"
 
 const prisma = new PrismaClient()
 
@@ -62,8 +62,12 @@ export async function POST(req: Request) {
     },
   })
 
-  // ChatWork通知（制作へ「新しい依頼が来た」）
+  // ChatWork通知（制作メンバー全員をメンション）
+  const productionMembers = await getProductionMembers()
+  const mentions = buildMentions(productionMembers)
+
   const msg =
+    mentions +
     "[info][title]📥 新しい制作依頼が来ました[/title]\n" +
     "案件: " + task.name + "\n" +
     "企業: " + (task.company?.name ?? "-") + "\n" +

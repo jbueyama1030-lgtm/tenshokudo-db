@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { notifyChatwork, APP_URL } from "@/lib/chatwork"
+import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
 
 const prisma = new PrismaClient()
 
@@ -37,8 +37,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     where: { id },
     include: {
       company: { select: { name: true } },
-      assignee: { select: { name: true } },
-      requester: { select: { name: true } },
+      assignee: { select: { id: true, name: true, chatworkAccountId: true } },
+      requester: { select: { id: true, name: true, chatworkAccountId: true } },
     },
   })
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -53,8 +53,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     include: { user: { select: { id: true, name: true } } },
   })
 
+  // 投稿者以外の関係者（制作担当・依頼営業）をメンション
+  const targets = [task.assignee, task.requester].filter(
+    u => u && u.id !== session.user.id
+  )
+  const mentions = buildMentions(targets)
+
   // ChatWork通知（やり取りが発生した＝相手のアクションが必要）
   await notifyChatwork(
+    mentions +
     "[info][title]💬 コメントが投稿されました[/title]\n" +
     "案件: " + task.name + "\n" +
     "企業: " + (task.company?.name ?? "-") + "\n" +

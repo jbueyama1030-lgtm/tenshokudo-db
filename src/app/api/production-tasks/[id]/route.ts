@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { notifyChatwork, APP_URL } from "@/lib/chatwork"
+import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
 
 const prisma = new PrismaClient()
 
@@ -87,8 +87,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data,
     include: {
       company: { select: { id: true, name: true, companyId: true } },
-      assignee: { select: { id: true, name: true } },
-      requester: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true, chatworkAccountId: true } },
+      requester: { select: { id: true, name: true, chatworkAccountId: true } },
       lastUpdatedBy: { select: { id: true, name: true } },
     },
   })
@@ -135,7 +135,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       "依頼営業: " + (task.requester?.name ?? "-") + "\n"
 
     if (body.status === "sales_review") {
+      // 営業確認中 → 依頼営業にメンション
+      const mentions = buildMentions([task.requester])
       await notifyChatwork(
+        mentions +
         "[info][title]🎨 営業確認をお願いします[/title]\n" +
         commonInfo +
         "\n制作物の確認をお願いします。\n" +
@@ -143,7 +146,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         "[/info]"
       )
     } else if (body.status === "completed") {
+      // 完了 → 制作担当にメンション
+      const mentions = buildMentions([task.assignee])
       await notifyChatwork(
+        mentions +
         "[info][title]✅ 案件が完了しました[/title]\n" +
         commonInfo +
         "完了者: " + (task.lastUpdatedBy?.name ?? "-") + "\n" +
@@ -151,6 +157,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         "[/info]"
       )
     } else if (body.status === "client_review") {
+      // 企業確認中 → メンションなし（営業自身が変更したはずなので）
       await notifyChatwork(
         "[info][title]🏢 企業確認フェーズに進みました[/title]\n" +
         commonInfo +

@@ -7,6 +7,7 @@ type User = {
   name: string
   email: string
   role: string
+  chatworkAccountId: string | null
   createdAt: string
 }
 
@@ -18,11 +19,15 @@ function generatePassword() {
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "sales" })
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "sales", chatworkAccountId: "" })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [generatedPassword, setGeneratedPassword] = useState("")
   const [userName, setUserName] = useState("")
+
+  const [editingId, setEditingId] = useState("")
+  const [editingValue, setEditingValue] = useState("")
+  const [savingId, setSavingId] = useState("")
 
   const fetchUsers = async () => {
     const res = await fetch("/api/users")
@@ -54,7 +59,7 @@ export default function UsersPage() {
       body: JSON.stringify(form),
     })
     if (res.ok) {
-      setForm({ name: "", email: "", password: "", role: "sales" })
+      setForm({ name: "", email: "", password: "", role: "sales", chatworkAccountId: "" })
       setShowForm(false)
       setGeneratedPassword("")
       fetchUsers()
@@ -63,6 +68,31 @@ export default function UsersPage() {
       setError(data.error ?? "エラーが発生しました")
     }
     setLoading(false)
+  }
+
+  const startEdit = (user: User) => {
+    setEditingId(user.id)
+    setEditingValue(user.chatworkAccountId ?? "")
+  }
+
+  const cancelEdit = () => {
+    setEditingId("")
+    setEditingValue("")
+  }
+
+  const saveEdit = async (id: string) => {
+    setSavingId(id)
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, chatworkAccountId: editingValue.trim() }),
+    })
+    if (res.ok) {
+      await fetchUsers()
+      setEditingId("")
+      setEditingValue("")
+    }
+    setSavingId("")
   }
 
   return (
@@ -114,6 +144,11 @@ export default function UsersPage() {
                     <option value="admin">管理者</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">ChatWorkアカウントID（任意）</label>
+                  <input type="text" value={form.chatworkAccountId} onChange={e => setForm(f => ({ ...f, chatworkAccountId: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例：1234567" />
+                  <p className="text-xs text-gray-400 mt-1">通知でメンションするために使います</p>
+                </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button onClick={() => { setShowForm(false); setGeneratedPassword("") }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
@@ -129,6 +164,7 @@ export default function UsersPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">名前</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">メールアドレス</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">権限</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">ChatWork ID</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">登録日</th>
                 </tr>
               </thead>
@@ -139,6 +175,36 @@ export default function UsersPage() {
                     <td className="px-4 py-3 text-sm text-gray-600">{user.email}</td>
                     <td className="px-4 py-3">
                       <span className={"text-xs px-2 py-1 rounded-full font-medium " + (user.role === "admin" ? "bg-purple-100 text-purple-800" : user.role === "production" ? "bg-pink-100 text-pink-800" : "bg-gray-100 text-gray-600")}>{user.role === "admin" ? "管理者" : user.role === "production" ? "制作" : "営業"}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {editingId === user.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={editingValue}
+                            onChange={e => setEditingValue(e.target.value)}
+                            className="w-28 border border-gray-300 rounded px-2 py-1 text-sm font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="1234567"
+                          />
+                          <button onClick={() => saveEdit(user.id)} disabled={savingId === user.id} className="text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">
+                            {savingId === user.id ? "保存中" : "保存"}
+                          </button>
+                          <button onClick={cancelEdit} className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap">
+                            取消
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {user.chatworkAccountId ? (
+                            <span className="text-sm font-mono text-gray-700">{user.chatworkAccountId}</span>
+                          ) : (
+                            <span className="text-xs text-gray-300">未設定</span>
+                          )}
+                          <button onClick={() => startEdit(user)} className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap">
+                            編集
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{new Date(user.createdAt).toLocaleDateString("ja-JP")}</td>
                   </tr>
