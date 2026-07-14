@@ -17,6 +17,8 @@ model User {
   companies Company[]
   assignedTasks  ProductionTask[] @relation("TaskAssignee")
   requestedTasks ProductionTask[] @relation("TaskRequester")
+  updatedTasks   ProductionTask[] @relation("TaskLastUpdatedBy")
+  taskComments   TaskComment[]
 }
 
 model Company {
@@ -76,7 +78,6 @@ model Company {
   memo String?
 
   // ドライバー売上情報
-  // 例: {"全体": {"top": 120, "avg": 80}, "隔日勤務": {"top": 100, "avg": 70}, "日勤": {"top": 80, "avg": 60}, "夜勤": {"top": 90, "avg": 65}}
   driverSales Json?
 
   // 月次実績
@@ -110,14 +111,14 @@ model ProductionTask {
   companyId String
   company   Company @relation(fields: [companyId], references: [id])
 
-  name     String   // 案件名
-  type     String   @default("new")          // new=新規 / revise=修正 / renewal=リニューアル
-  priority String   @default("medium")        // high=高 / medium=中 / low=低
-  status   String   @default("not_started")   // not_started/in_progress/sales_review/client_review/published/paused/stopped
+  name     String
+  type     String   @default("new")
+  priority String   @default("medium")
+  status   String   @default("not_started")
   memo     String?  @db.Text
-  dueDate     DateTime?  // 納期
-  publishedAt DateTime?  // 公開日
-  stoppedAt   DateTime?  // 掲載停止日
+  dueDate     DateTime?
+  publishedAt DateTime?
+  stoppedAt   DateTime?
 
   // 制作担当（未割当null可）
   assigneeId String?
@@ -127,6 +128,27 @@ model ProductionTask {
   requesterId String?
   requester   User?   @relation("TaskRequester", fields: [requesterId], references: [id])
 
+  // 最終更新者
+  lastUpdatedById String?
+  lastUpdatedBy   User?   @relation("TaskLastUpdatedBy", fields: [lastUpdatedById], references: [id])
+
+  // コメント
+  comments TaskComment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model TaskComment {
+  id     String         @id @default(cuid())
+  taskId String
+  task   ProductionTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  body     String  @db.Text
+  isSystem Boolean @default(false)
+
+  createdAt DateTime @default(now())
 }

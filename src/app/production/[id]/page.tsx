@@ -12,6 +12,14 @@ type MonthlyRecord = {
   inflowBreakdown: Record<string, number> | null
 }
 
+type Comment = {
+  id: string
+  body: string
+  isSystem: boolean
+  createdAt: string
+  user: { id: string; name: string } | null
+}
+
 type Task = {
   id: string
   name: string
@@ -21,8 +29,11 @@ type Task = {
   memo: string | null
   dueDate: string | null
   assigneeId: string | null
+  requesterId: string | null
+  updatedAt: string
   assignee: { id: string; name: string } | null
   requester: { id: string; name: string } | null
+  lastUpdatedBy: { id: string; name: string } | null
   company: {
     id: string
     name: string
@@ -54,6 +65,7 @@ const STATUS_OPTIONS = [
   { value: "sales_review", label: "営業確認中" },
   { value: "client_review", label: "企業確認中" },
   { value: "published", label: "公開" },
+  { value: "completed", label: "完了" },
   { value: "paused", label: "一時停止中" },
   { value: "stopped", label: "停止処理済み" },
 ]
@@ -63,6 +75,7 @@ const STATUS_CLS: Record<string, string> = {
   sales_review: "bg-purple-100 text-purple-700",
   client_review: "bg-indigo-100 text-indigo-700",
   published: "bg-green-100 text-green-700",
+  completed: "bg-emerald-100 text-emerald-800",
   paused: "bg-orange-100 text-orange-700",
   stopped: "bg-gray-200 text-gray-500",
 }
@@ -72,14 +85,24 @@ function fmt(n: number | null | undefined) {
   return Number(n).toLocaleString("ja-JP")
 }
 
+function fmtDateTime(s: string) {
+  const d = new Date(s)
+  return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+}
+
 export default function ProductionTaskDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [task, setTask] = useState<Task | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
   const [userName, setUserName] = useState("")
   const [userId, setUserId] = useState("")
+  const [role, setRole] = useState("")
   const [memo, setMemo] = useState("")
+  const [newComment, setNewComment] = useState("")
   const [saving, setSaving] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [err, setErr] = useState("")
 
   const load = async () => {
     const res = await fetch("/api/production-tasks/" + id)
@@ -90,32 +113,71 @@ export default function ProductionTaskDetailPage() {
     }
   }
 
+  const loadComments = async () => {
+    const res = await fetch("/api/production-tasks/" + id + "/comments")
+    if (res.ok) setComments(await res.json())
+  }
+
   useEffect(() => {
     fetch("/api/auth/session").then(r => r.json()).then(s => {
       setUserName(s?.user?.name ?? "")
       setUserId(s?.user?.id ?? "")
+      setRole(s?.user?.role ?? "")
     })
     load()
+    loadComments()
   }, [id])
 
   const patch = async (body: Record<string, unknown>) => {
     setSaving(true)
+    setErr("")
     const res = await fetch("/api/production-tasks/" + id, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-    if (res.ok) await load()
+    if (res.ok) {
+      await load()
+      await loadComments()
+    } else {
+      const data = await res.json()
+      setErr(data.error ?? "更新に失敗しました")
+    }
     setSaving(false)
+  }
+
+  const handlePostComment = async () => {
+    if (!newComment.trim()) return
+    setPosting(true)
+    const res = await fetch("/api/production-tasks/" + id + "/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: newComment }),
+    })
+    if (res.ok) {
+      setNewComment("")
+      await loadComments()
+    }
+    setPosting(false)
   }
 
   const handleDelete = async () => {
     if (!confirm("この案件を削除しますか？")) return
-    await fetch("/api/production-tasks/" + id, { method: "DELETE" })
-    router.push("/production")
+    const res = await fetch("/api/production-tasks/" + id, { method: "DELETE" })
+    if (res.ok) {
+      router.push("/production")
+    } else {
+      const data = await res.json()
+      setErr(data.error ?? "削除に失敗しました")
+    }
   }
 
   if (!task) return <div className="flex h-screen items-center justify-center text-gray-400">読み込み中...</div>
+
+  const isAdmin = role !== "sales" && role !== "production"
+  const isRequester = task.requesterId === userId
+  const canComplete = isAdmin || isRequester
+  const canDelete = isAdmin || isRequester
 
   const c = task.company
   const years = c ? [...new Set(c.monthlyRecords.map(r => r.year))].sort() : []
@@ -131,13 +193,18 @@ export default function ProductionTaskDetailPage() {
             <a href="/production" className="text-sm text-gray-400 hover:text-gray-600">← 制作ダッシュボード</a>
             <span className="text-gray-300">/</span>
             <h1 className="text-xl font-bold text-gray-800">{task.name}</h1>
+            <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_CLS[task.status] ?? "")}>
+              {STATUS_OPTIONS.find(o => o.value === task.status)?.label ?? task.status}
+            </span>
           </div>
+
+          {err && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">{err}</div>}
 
           {/* 案件情報＋操作 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">案件情報</h2>
-              <button onClick={handleDelete} className="text-xs text-red-500 hover:text-red-700">🗑️ 削除</button>
+              {canDelete && <button onClick={handleDelete} className="text-xs text-red-500 hover:text-red-700">🗑️ 削除</button>}
             </div>
 
             <div className="grid grid-cols-3 gap-4 mb-4">
@@ -167,6 +234,14 @@ export default function ProductionTaskDetailPage() {
               </div>
             </div>
 
+            {/* 最終更新 */}
+            <div className="border-t border-gray-100 pt-3 mb-4">
+              <div className="text-xs text-gray-400">
+                最終更新: {task.lastUpdatedBy ? task.lastUpdatedBy.name : "-"}
+                <span className="ml-2 text-gray-300">{fmtDateTime(task.updatedAt)}</span>
+              </div>
+            </div>
+
             {/* ステータス変更 */}
             <div className="border-t border-gray-100 pt-4 mb-4">
               <div className="text-xs text-gray-400 mb-2">ステータス</div>
@@ -177,7 +252,11 @@ export default function ProductionTaskDetailPage() {
                   disabled={saving}
                   className={"border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium " + (STATUS_CLS[task.status] ?? "text-gray-900")}
                 >
-                  {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {STATUS_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value} disabled={o.value === "completed" && !canComplete}>
+                      {o.label}{o.value === "completed" && !canComplete ? "（依頼営業のみ）" : ""}
+                    </option>
+                  ))}
                 </select>
                 {saving && <span className="text-xs text-gray-400">保存中...</span>}
               </div>
@@ -203,6 +282,53 @@ export default function ProductionTaskDetailPage() {
               <div className="text-xs text-gray-400 mb-2">メモ・依頼内容</div>
               <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
               <button onClick={() => patch({ memo })} disabled={saving} className="mt-2 text-sm border border-gray-300 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50">メモを保存</button>
+            </div>
+          </div>
+
+          {/* コメント・履歴（タイムライン） */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">💬 コメント・履歴（{comments.filter(x => !x.isSystem).length}件）</h2>
+
+            {comments.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">まだ履歴がありません</p>
+            ) : (
+              <div className="space-y-3 mb-5">
+                {comments.map(cm => (
+                  cm.isSystem ? (
+                    <div key={cm.id} className="flex items-center gap-2 text-xs text-gray-400 py-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                      <span>{cm.user?.name ?? "システム"}が{cm.body}</span>
+                      <span className="text-gray-300">{fmtDateTime(cm.createdAt)}</span>
+                    </div>
+                  ) : (
+                    <div key={cm.id} className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-semibold text-gray-700">{cm.user?.name ?? "不明"}</span>
+                        <span className="text-xs text-gray-400">{fmtDateTime(cm.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{cm.body}</p>
+                    </div>
+                  )
+                ))}
+              </div>
+            )}
+
+            {/* 投稿フォーム */}
+            <div className="border-t border-gray-100 pt-4">
+              <textarea
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+                rows={2}
+                placeholder="修正依頼や確認事項を記入..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+              />
+              <button
+                onClick={handlePostComment}
+                disabled={posting || !newComment.trim()}
+                className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {posting ? "投稿中..." : "コメントする"}
+              </button>
             </div>
           </div>
 
@@ -238,13 +364,11 @@ export default function ProductionTaskDetailPage() {
                 </div>
               </div>
 
-              {/* 採用課題 */}
               <div className="border-t border-gray-100 pt-4 mb-4">
                 <div className="text-xs text-gray-400 mb-1">採用課題</div>
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.adoptionChallenge || "-"}</p>
               </div>
 
-              {/* 募集条件 */}
               <div className="border-t border-gray-100 pt-4 mb-4 grid grid-cols-2 gap-4">
                 <div>
                   <div className="text-xs text-gray-400 mb-1">募集勤務形態</div>
@@ -260,7 +384,6 @@ export default function ProductionTaskDetailPage() {
                 </div>
               </div>
 
-              {/* 直近の応募実績 */}
               {latestRecords.length > 0 && (
                 <div className="border-t border-gray-100 pt-4">
                   <div className="text-xs text-gray-400 mb-2">応募実績（{latestYear}年）</div>

@@ -10,9 +10,11 @@ type Task = {
   status: string
   memo: string | null
   dueDate: string | null
+  updatedAt: string
   company: { id: string; name: string; companyId: string | null } | null
   assignee: { id: string; name: string } | null
   requester: { id: string; name: string } | null
+  lastUpdatedBy: { id: string; name: string } | null
   createdAt: string
 }
 
@@ -28,9 +30,13 @@ const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   sales_review: { label: "営業確認中", cls: "bg-purple-100 text-purple-700" },
   client_review: { label: "企業確認中", cls: "bg-indigo-100 text-indigo-700" },
   published: { label: "公開", cls: "bg-green-100 text-green-700" },
+  completed: { label: "完了", cls: "bg-emerald-100 text-emerald-800" },
   paused: { label: "一時停止中", cls: "bg-orange-100 text-orange-700" },
   stopped: { label: "停止処理済み", cls: "bg-gray-200 text-gray-500" },
 }
+
+// 終了扱いのステータス（ダッシュボードの進行中一覧から除外）
+const CLOSED_STATUSES = ["completed", "stopped"]
 
 function TaskTable({ tasks }: { tasks: Task[] }) {
   if (tasks.length === 0) {
@@ -80,6 +86,7 @@ export default function ProductionDashboardPage() {
   const [userName, setUserName] = useState("")
   const [userId, setUserId] = useState("")
   const [loading, setLoading] = useState(true)
+  const [showClosed, setShowClosed] = useState(false)
 
   useEffect(() => {
     fetch("/api/auth/session").then(r => r.json()).then(s => {
@@ -92,9 +99,12 @@ export default function ProductionDashboardPage() {
     })
   }, [])
 
-  // 未割当（assigneeなし）と、自分が担当の案件に振り分け
-  const unassigned = tasks.filter(t => !t.assignee)
-  const mine = tasks.filter(t => t.assignee && t.assignee.id === userId)
+  // 進行中の案件（完了・停止処理済みを除く）
+  const active = tasks.filter(t => !CLOSED_STATUSES.includes(t.status))
+  const unassigned = active.filter(t => !t.assignee)
+  const mine = active.filter(t => t.assignee && t.assignee.id === userId)
+  // 終了した案件
+  const closed = tasks.filter(t => CLOSED_STATUSES.includes(t.status))
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -124,6 +134,20 @@ export default function ProductionDashboardPage() {
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{mine.length}</span>
                 </div>
                 <TaskTable tasks={mine} />
+              </div>
+
+              {/* 終了した案件（折りたたみ） */}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <button onClick={() => setShowClosed(!showClosed)} className="flex items-center gap-2 w-full text-left">
+                  <h2 className="text-sm font-semibold text-gray-500">✅ 終了した案件</h2>
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">{closed.length}</span>
+                  <span className="ml-auto text-xs text-gray-400">{showClosed ? "▲ 閉じる" : "▼ 表示する"}</span>
+                </button>
+                {showClosed && (
+                  <div className="mt-4">
+                    <TaskTable tasks={closed} />
+                  </div>
+                )}
               </div>
             </div>
           )}
