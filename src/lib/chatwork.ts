@@ -1,5 +1,6 @@
 // ChatWork通知の共通関数
 // 環境変数 CHATWORK_API_TOKEN / CHATWORK_ROOM_ID が未設定なら何もしない
+// ChatWork通知（環境変数の再読み込みのため再ビルド）
 
 export async function notifyChatwork(message: string): Promise<void> {
   const token = process.env.CHATWORK_API_TOKEN
