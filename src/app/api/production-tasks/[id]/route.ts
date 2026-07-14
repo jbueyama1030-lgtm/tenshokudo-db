@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { notifyChatwork, APP_URL } from "@/lib/chatwork"
 
 const prisma = new PrismaClient()
 
-// ステータスの日本語ラベル（システムコメント生成用）
 const STATUS_LABELS: Record<string, string> = {
   not_started: "未着手",
   in_progress: "着手",
@@ -16,7 +16,6 @@ const STATUS_LABELS: Record<string, string> = {
   stopped: "停止処理済み",
 }
 
-// GET: 案件1件を取得（紐付く企業の営業データも含めて返す）
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -41,7 +40,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json(task)
 }
 
-// PATCH: 案件を更新（担当割り当て・ステータス・メモ・納期など）
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -58,22 +56,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const isSales = role === "sales"
   const isRequester = existing.requesterId === session.user.id
 
-  // 編集権限：制作・adminは全案件、営業は自分が起票した案件のみ
   const canEdit = isAdmin || isProduction || (isSales && isRequester)
   if (!canEdit) {
     return NextResponse.json({ error: "この案件を編集する権限がありません" }, { status: 403 })
   }
 
-  // 「完了」にできるのは依頼営業とadminのみ（制作は不可）
   if (body.status === "completed" && !isAdmin && !isRequester) {
     return NextResponse.json({ error: "案件を完了にできるのは依頼営業と管理者のみです" }, { status: 403 })
   }
-  // 制作担当の割り当ては制作ロールとadminのみ（営業は不可）
+
   if (body.assigneeId !== undefined && !isAdmin && !isProduction) {
     return NextResponse.json({ error: "制作担当を変更できるのは制作担当者と管理者のみです" }, { status: 403 })
   }
 
-  // 更新するフィールドだけを組み立てる
   const data: Record<string, unknown> = {}
   if (body.name !== undefined) data.name = body.name
   if (body.type !== undefined) data.type = body.type
@@ -85,7 +80,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.stoppedAt !== undefined) data.stoppedAt = body.stoppedAt ? new Date(body.stoppedAt) : null
   if (body.assigneeId !== undefined) data.assigneeId = body.assigneeId || null
 
-  // 最終更新者を記録
   data.lastUpdatedById = session.user.id
 
   const task = await prisma.productionTask.update({
@@ -99,8 +93,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     },
   })
 
-  // ステータスが変わったら、自動でシステムコメントを残す
-  if (body.status !== undefined && body.status !== existing.status) {
+  const statusChanged = body.status !== undefined && body.status !== existing.status
+  if (statusChanged) {
     const from = STATUS_LABELS[existing.status] ?? existing.status
     const to = STATUS_LABELS[body.status] ?? body.status
     await prisma.taskComment.create({
@@ -113,7 +107,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
   }
 
-  // 担当が変わったら、それも自動記録
   if (body.assigneeId !== undefined && (body.assigneeId || null) !== existing.assigneeId) {
     let msg = ""
     if (body.assigneeId) {
@@ -132,10 +125,45 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
   }
 
+  // ChatWork通知（要アクションのときだけ）
+  if (statusChanged) {
+    const link = APP_URL + "/production/" + task.id
+    const commonInfo =
+      "案件: " + task.name + "\n" +
+      "企業: " + (task.company?.name ?? "-") + "\n" +
+      "制作担当: " + (task.assignee?.name ?? "未割当") + "\n" +
+      "依頼営業: " + (task.requester?.name ?? "-") + "\n"
+
+    if (body.status === "sales_review") {
+      await notifyChatwork(
+        "[info][title]🎨 営業確認をお願いします[/title]\n" +
+        commonInfo +
+        "\n制作物の確認をお願いします。\n" +
+        link +
+        "[/info]"
+      )
+    } else if (body.status === "completed") {
+      await notifyChatwork(
+        "[info][title]✅ 案件が完了しました[/title]\n" +
+        commonInfo +
+        "完了者: " + (task.lastUpdatedBy?.name ?? "-") + "\n" +
+        "\n" + link +
+        "[/info]"
+      )
+    } else if (body.status === "client_review") {
+      await notifyChatwork(
+        "[info][title]🏢 企業確認フェーズに進みました[/title]\n" +
+        commonInfo +
+        "\n営業が企業へ確認中です。\n" +
+        link +
+        "[/info]"
+      )
+    }
+  }
+
   return NextResponse.json(task)
 }
 
-// DELETE: 案件を削除（adminと依頼営業のみ。制作は不可）
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
