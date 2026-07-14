@@ -68,6 +68,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.status === "completed" && !isAdmin && !isRequester) {
     return NextResponse.json({ error: "案件を完了にできるのは依頼営業と管理者のみです" }, { status: 403 })
   }
+  // 制作担当の割り当ては制作ロールとadminのみ（営業は不可）
+  if (body.assigneeId !== undefined && !isAdmin && !isProduction) {
+    return NextResponse.json({ error: "制作担当を変更できるのは制作担当者と管理者のみです" }, { status: 403 })
+  }
 
   // 更新するフィールドだけを組み立てる
   const data: Record<string, unknown> = {}

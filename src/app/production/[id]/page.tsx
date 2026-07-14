@@ -175,9 +175,11 @@ export default function ProductionTaskDetailPage() {
   if (!task) return <div className="flex h-screen items-center justify-center text-gray-400">読み込み中...</div>
 
   const isAdmin = role !== "sales" && role !== "production"
+  const isProduction = role === "production"
   const isRequester = task.requesterId === userId
   const canComplete = isAdmin || isRequester
   const canDelete = isAdmin || isRequester
+  const canAssign = isAdmin || isProduction
 
   const c = task.company
   const years = c ? [...new Set(c.monthlyRecords.map(r => r.year))].sort() : []
@@ -262,10 +264,12 @@ export default function ProductionTaskDetailPage() {
               </div>
             </div>
 
-            {/* 担当取得／解除 */}
+            {/* 担当取得／解除（制作ロール・adminのみ操作可） */}
             <div className="border-t border-gray-100 pt-4 mb-4">
               <div className="text-xs text-gray-400 mb-2">担当</div>
-              {task.assigneeId === userId ? (
+              {!canAssign ? (
+                <p className="text-sm text-gray-500">{task.assignee ? task.assignee.name + " が担当中" : "未割当"}</p>
+              ) : task.assigneeId === userId ? (
                 <button onClick={() => patch({ assigneeId: null })} disabled={saving} className="text-sm border border-gray-300 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50">担当を外す</button>
               ) : task.assigneeId ? (
                 <div className="flex items-center gap-3">
