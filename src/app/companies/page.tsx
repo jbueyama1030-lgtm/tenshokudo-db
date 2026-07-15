@@ -42,7 +42,11 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const searchQuery = params.q ?? ""
   const selectedTemp = params.temp ?? "all"
 
-  const users = await prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } })
+  const users = await prisma.user.findMany({
+  where: { role: { in: ["sales", "admin"] } },
+  select: { id: true, name: true },
+  orderBy: { name: "asc" },
+  })
 
   const companies = await prisma.company.findMany({
     where: {
