@@ -155,7 +155,7 @@ function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
         <div className="flex gap-1">
           {years.map(y => (
             <button key={y} onClick={() => setSelectedYear(y)}
-              className={`px-3 py-1 text-xs rounded-full border transition-colors ${selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400"}`}>
+              className={"px-3 py-1 text-xs rounded-full border transition-colors " + (selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400")}>
               {y}年
             </button>
           ))}
@@ -230,7 +230,7 @@ function TenshokudoCostPerHire({ annualRevenue, records }: { annualRevenue: numb
         <div className="flex gap-1">
           {years.map(y => (
             <button key={y} type="button" onClick={() => setSelectedYear(y)}
-              className={`px-2.5 py-0.5 text-xs rounded-full border transition-colors ${selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400"}`}>
+              className={"px-2.5 py-0.5 text-xs rounded-full border transition-colors " + (selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400")}>
               {y}年
             </button>
           ))}
@@ -262,8 +262,14 @@ export default function CompanyDetailPage() {
   const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
   const [taskLoading, setTaskLoading] = useState(false)
 
+  // インライン編集用の状態
+  const [inlineField, setInlineField] = useState<string>("")   // 今編集中の項目名（"" なら非編集）
+  const [inlineValue, setInlineValue] = useState<string>("")
+  const [inlineSaving, setInlineSaving] = useState(false)
+  const [inlineSavedMsg, setInlineSavedMsg] = useState(false)
+
   useEffect(() => {
-    fetch(`/api/companies/${id}`).then(r => r.json()).then(data => {
+    fetch("/api/companies/" + id).then(r => r.json()).then(data => {
       setCompany(data)
       setForm({
         ...data,
@@ -285,7 +291,7 @@ export default function CompanyDetailPage() {
   const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }))
 
   const loadTasks = async () => {
-    const res = await fetch(`/api/production-tasks?companyId=${id}`)
+    const res = await fetch("/api/production-tasks?companyId=" + id)
     if (res.ok) setTasks(await res.json())
   }
 
@@ -306,7 +312,7 @@ export default function CompanyDetailPage() {
 
   const handleSave = async () => {
     setLoading(true)
-    const res = await fetch(`/api/companies/${id}`, {
+    const res = await fetch("/api/companies/" + id, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
@@ -321,8 +327,52 @@ export default function CompanyDetailPage() {
 
   const handleDelete = async () => {
     if (!confirm("この企業を削除しますか？")) return
-    await fetch(`/api/companies/${id}`, { method: "DELETE" })
+    await fetch("/api/companies/" + id, { method: "DELETE" })
     router.push("/companies")
+  }
+
+  // インライン編集：開始
+  const startInline = (field: string, currentValue: string) => {
+    setInlineField(field)
+    setInlineValue(currentValue ?? "")
+    setInlineSavedMsg(false)
+  }
+
+  // インライン編集：キャンセル
+  const cancelInline = () => {
+    setInlineField("")
+    setInlineValue("")
+  }
+
+  // インライン編集：保存（その項目だけPATCHに送る）
+  const saveInline = async (field: string, valueOverride?: string) => {
+    const value = valueOverride !== undefined ? valueOverride : inlineValue
+    setInlineSaving(true)
+
+    // 送るペイロードを組み立て（該当フィールドだけ）
+    const payload: Record<string, unknown> = {}
+    if (field === "nextActionDate") {
+      payload.nextActionDate = value || null
+    } else {
+      payload[field] = value || null
+    }
+
+    const res = await fetch("/api/companies/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    if (res.ok) {
+      // 画面表示を更新（company と form の両方に反映）
+      setCompany(c => c ? { ...c, [field]: value || null } : c)
+      setForm(f => ({ ...f, [field]: value || null }))
+      setInlineField("")
+      setInlineValue("")
+      setInlineSavedMsg(true)
+      setTimeout(() => setInlineSavedMsg(false), 2000)
+    }
+    setInlineSaving(false)
   }
 
   if (!company) return <div className="flex h-screen items-center justify-center text-gray-400">読み込み中...</div>
@@ -332,6 +382,13 @@ export default function CompanyDetailPage() {
   const optionTotal = (form.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
   const totalRevenue = annualBase - discountAmt + optionTotal
   const renewalDays = daysUntil(company.contractRenewal)
+
+  // インライン編集が使えるか（編集モードでない かつ 編集権限がある）
+  const canInlineEdit =
+    !editing &&
+    sessionUser != null &&
+    sessionUser.role !== "production" &&
+    (sessionUser.role !== "sales" || company.userId === sessionUser.id)
 
   const setDriverSales = (key: string, val: unknown) => {
     const current = (form.driverSales as DriverSales) ?? {}
@@ -372,8 +429,9 @@ export default function CompanyDetailPage() {
               <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（制作）</span>
             ) : sessionUser?.role !== "sales" || company.userId === sessionUser?.id ? (
               <>
-                <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 編集</button>
+                <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 全項目を編集</button>
                 <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
+                {inlineSavedMsg && <span className="text-xs text-green-600 self-center ml-1">✓ 保存しました</span>}
               </>
             ) : (
               <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（担当外）</span>
@@ -397,7 +455,7 @@ export default function CompanyDetailPage() {
                     <option value="contracted">✅ 契約中</option>
                     <option value="delisted">📉 掲載落ち</option>
                   </select>
-                ) : <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_MAP[company.status]?.cls}`}>{STATUS_MAP[company.status]?.label}</span>}
+                ) : <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_MAP[company.status]?.cls ?? "")}>{STATUS_MAP[company.status]?.label ?? company.status}</span>}
               </Field>
               <Field label="担当者">
                 {editing ? (
@@ -470,7 +528,7 @@ export default function CompanyDetailPage() {
                         <button key={app} type="button" onClick={() => {
                           const apps = form.apps ?? []
                           set("apps", sel ? apps.filter(a => a !== app) : [...apps, app])
-                        }} className={`text-xs px-3 py-1 rounded-full border transition-colors ${sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{app}</button>
+                        }} className={"text-xs px-3 py-1 rounded-full border transition-colors " + (sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200")}>{app}</button>
                       )
                     })}
                   </div>
@@ -501,9 +559,9 @@ export default function CompanyDetailPage() {
                   <button key={s} type="button" onClick={() => {
                     const shifts = form.shifts ?? []
                     set("shifts", sel ? shifts.filter(x => x !== s) : [...shifts, s])
-                  }} className={`text-sm px-4 py-1.5 rounded-full border transition-colors ${sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{s}</button>
+                  }} className={"text-sm px-4 py-1.5 rounded-full border transition-colors " + (sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200")}>{s}</button>
                 ) : (
-                  <span key={s} className={`text-sm px-4 py-1.5 rounded-full border ${sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-300 border-gray-200"}`}>{s}</span>
+                  <span key={s} className={"text-sm px-4 py-1.5 rounded-full border " + (sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-300 border-gray-200")}>{s}</span>
                 )
               })}
             </div>
@@ -731,7 +789,7 @@ export default function CompanyDetailPage() {
                         : <div>
                             <p className="text-sm text-gray-900">{company.contractRenewal?.slice(0, 10) ?? "-"}</p>
                             {renewalDays != null && (
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${renewalDays <= 14 ? "bg-red-100 text-red-700" : renewalDays <= 60 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700"}`}>残{renewalDays}日</span>
+                              <span className={"text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block " + (renewalDays <= 14 ? "bg-red-100 text-red-700" : renewalDays <= 60 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700")}>残{renewalDays}日</span>
                             )}
                           </div>}
                     </Field>
@@ -765,27 +823,114 @@ export default function CompanyDetailPage() {
             <MonthlyRecordsTable records={company.monthlyRecords} />
           )}
 
-          {/* 商談情報 */}
+          {/* 商談情報（★インライン編集対応） */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-4">商談情報</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">商談情報</h2>
+              {canInlineEdit && !editing && (
+                <span className="text-xs text-gray-400">クリックしてその場で編集できます</span>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-4 mb-4">
+              {/* 温度感 */}
               <Field label="温度感">
-                {editing
-                  ? <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                {editing ? (
+                  <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    <option value="">未設定</option>
+                    <option value="hot">🔥 ホット</option>
+                    <option value="warm">☀️ ウォーム</option>
+                    <option value="cold">❄️ コールド</option>
+                  </select>
+                ) : inlineField === "temperature" ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={inlineValue}
+                      onChange={e => saveInline("temperature", e.target.value)}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
                       <option value="">未設定</option>
                       <option value="hot">🔥 ホット</option>
                       <option value="warm">☀️ ウォーム</option>
                       <option value="cold">❄️ コールド</option>
                     </select>
-                  : company.temperature
-                    ? <span className={`text-xs px-2 py-1 rounded-full font-medium ${TEMP_MAP[company.temperature]?.cls}`}>{TEMP_MAP[company.temperature]?.label}</span>
-                    : <p className="text-sm text-gray-900">-</p>}
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("temperature", company.temperature ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.temperature
+                      ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_MAP[company.temperature]?.cls ?? "")}>{TEMP_MAP[company.temperature]?.label ?? company.temperature}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 設定" : "-"}</span>}
+                  </button>
+                )}
               </Field>
+
+              {/* 次回アクション */}
               <Field label="次回アクション">
-                {editing ? <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 資料送付" /> : <p className="text-sm text-gray-900">{company.nextAction ?? "-"}</p>}
+                {editing ? (
+                  <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 資料送付" />
+                ) : inlineField === "nextAction" ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={inlineValue}
+                      onChange={e => setInlineValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") saveInline("nextAction"); if (e.key === "Escape") cancelInline() }}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="flex-1 border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="例: 資料送付"
+                    />
+                    <button onClick={() => saveInline("nextAction")} disabled={inlineSaving} className="text-xs bg-blue-600 text-white rounded px-2 py-1.5 hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">{inlineSaving ? "..." : "保存"}</button>
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("nextAction", company.nextAction ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.nextAction
+                      ? <span className="text-sm text-gray-900">{company.nextAction}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 入力" : "-"}</span>}
+                  </button>
+                )}
               </Field>
+
+              {/* 次回アクション日 */}
               <Field label="次回アクション日">
-                {editing ? <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.nextActionDate?.slice(0, 10) ?? "-"}</p>}
+                {editing ? (
+                  <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+                ) : inlineField === "nextActionDate" ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={inlineValue.slice(0, 10)}
+                      onChange={e => saveInline("nextActionDate", e.target.value)}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("nextActionDate", company.nextActionDate ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.nextActionDate
+                      ? <span className="text-sm text-gray-900">{company.nextActionDate.slice(0, 10)}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 日付を設定" : "-"}</span>}
+                  </button>
+                )}
               </Field>
             </div>
             <Field label="商談メモ">
