@@ -28,7 +28,6 @@ export default function AdCostsPage() {
   const [savingInflow, setSavingInflow] = useState("")
   const [savedInflow, setSavedInflow] = useState("")
 
-  // 追加用
   const [newInflow, setNewInflow] = useState("")
 
   const load = async (year?: number, month?: number) => {
@@ -39,7 +38,6 @@ export default function AdCostsPage() {
     const res = await fetch(url)
     if (res.ok) {
       const d = await res.json()
-      // 初回で target が無ければ最新月で読み直す
       if (!d.target && d.availableMonths.length > 0) {
         const m = d.availableMonths[0]
         return load(m.year, m.month)
@@ -57,7 +55,6 @@ export default function AdCostsPage() {
     load()
   }, [])
 
-  // 行の値をローカルで変更
   const updateRow = (inflow: string, patch: Partial<Row>) => {
     setData(d => {
       if (!d) return d
@@ -65,7 +62,6 @@ export default function AdCostsPage() {
     })
   }
 
-  // 1行保存
   const saveRow = async (row: Row) => {
     if (!data?.target) return
     setSavingInflow(row.inflow)
@@ -88,7 +84,6 @@ export default function AdCostsPage() {
     }
   }
 
-  // 新しい流入元を行として追加（ローカルに足すだけ。保存で確定）
   const addInflow = () => {
     const name = newInflow.trim()
     if (!name || !data) return
@@ -97,10 +92,20 @@ export default function AdCostsPage() {
     setNewInflow("")
   }
 
-  // その行の推定広告費を計算して表示
+  // 推定広告費：運用型=総額 / 成果報酬型=単価×応募数
   const estimatedCost = (row: Row): number | null => {
     if (row.costType === "operation") return row.totalCost
     if (row.costType === "performance" && row.unitPrice != null) return row.unitPrice * row.applyCount
+    return null
+  }
+
+  // 応募単価：運用型=総額÷応募数 / 成果報酬型=単価そのまま
+  const costPerApply = (row: Row): number | null => {
+    if (row.costType === "operation") {
+      if (row.totalCost == null || row.applyCount === 0) return null
+      return Math.round(row.totalCost / row.applyCount)
+    }
+    if (row.costType === "performance") return row.unitPrice
     return null
   }
 
@@ -130,7 +135,7 @@ export default function AdCostsPage() {
             )}
           </div>
           <p className="text-sm text-gray-500 mb-6">
-            運用型は月の総額を、成果報酬型は応募単価を入力してください。成果報酬型は「単価 × その月の応募数」で広告費を自動算出します。
+            運用型は月の総額を、成果報酬型は応募単価を入力してください。応募単価は運用型なら「総額 ÷ 応募数」で自動算出されます。
           </p>
 
           {error && <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-700">{error}</div>}
@@ -150,6 +155,7 @@ export default function AdCostsPage() {
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">応募数</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">課金タイプ</th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">金額入力</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">応募単価</th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-gray-500">推定広告費</th>
                     <th className="px-4 py-3"></th>
                   </tr>
@@ -195,6 +201,9 @@ export default function AdCostsPage() {
                           </div>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-right font-medium text-blue-600">
+                        {costPerApply(row) != null ? "¥" + fmt(costPerApply(row)) : "-"}
+                      </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900">
                         {estimatedCost(row) != null ? "¥" + fmt(estimatedCost(row)) : "-"}
                       </td>
@@ -212,7 +221,6 @@ export default function AdCostsPage() {
                 </tbody>
               </table>
 
-              {/* 流入元を手動追加 */}
               <div className="border-t border-gray-200 px-4 py-3 flex items-center gap-2 bg-gray-50">
                 <span className="text-xs text-gray-400">リストに無い媒体を追加：</span>
                 <input
