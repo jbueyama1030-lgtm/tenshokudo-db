@@ -87,6 +87,9 @@ model Company {
   // 制作案件
   productionTasks ProductionTask[]
 
+  // 応募明細（マーケ分析用）
+  applicationRecords ApplicationRecord[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -152,4 +155,26 @@ model TaskComment {
   isSystem Boolean @default(false)
 
   createdAt DateTime @default(now())
+}
+
+model ApplicationRecord {
+  id          String   @id @default(cuid())
+
+  sourceCompanyId String
+  company     Company? @relation(fields: [companyRef], references: [id])
+  companyRef  String?
+
+  appliedAt   DateTime
+  year        Int
+  month       Int
+  status      String
+  inflow      String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sourceCompanyId, appliedAt, inflow], name: "uniqueApplication")
+  @@index([year, month])
+  @@index([inflow])
+  @@index([sourceCompanyId])
 }
