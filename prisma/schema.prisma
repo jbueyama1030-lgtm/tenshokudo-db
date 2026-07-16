@@ -178,3 +178,21 @@ model ApplicationRecord {
   @@index([inflow])
   @@index([sourceCompanyId])
 }
+
+model AdCost {
+  id        String   @id @default(cuid())
+
+  inflow    String
+  year      Int
+  month     Int
+
+  costType  String   @default("operation")
+  unitPrice Int?
+  totalCost Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([inflow, year, month], name: "uniqueAdCost")
+  @@index([year, month])
+}
