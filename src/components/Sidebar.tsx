@@ -36,9 +36,15 @@ export default function Sidebar({ userName }: { userName?: string }) {
     { href: "/production", label: "🎨 制作ダッシュボード" },
   ]
 
+  const adminLinks = [
+    { href: "/marketing", label: "📊 マーケ分析" },
+    { href: "/import/applications", label: "📥 応募明細インポート" },
+  ]
+
   const links = [
     ...salesLinks,
     ...(isProduction || isAdmin ? productionLinks : []),
+    ...(isAdmin ? adminLinks : []),
   ]
 
   return (
