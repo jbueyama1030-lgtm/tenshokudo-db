@@ -5,10 +5,10 @@ import { PrismaClient } from "@prisma/client"
 const prisma = new PrismaClient()
 
 // ファネル判定（確定した分類）
-const NO_CONTACT = ["未対応", "連絡取れず"]                                  // 接触なし
-const INTERVIEW_SET = ["面接設定済み", "面接完了", "内定通知済み", "入社", "面接・内定後辞退"] // 面接設定以降
-const INTERVIEW_DONE = ["面接完了", "内定通知済み", "入社", "面接・内定後辞退"]              // 面接実施以降
-const HIRED = ["入社"]                                                       // 入社
+const NO_CONTACT = ["未対応", "連絡取れず"]
+const INTERVIEW_SET = ["面接設定済み", "面接完了", "内定通知済み", "入社", "面接・内定後辞退"]
+const INTERVIEW_DONE = ["面接完了", "内定通知済み", "入社", "面接・内定後辞退"]
+const HIRED = ["入社"]
 
 type Funnel = {
   apply: number
@@ -34,7 +34,6 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  // 管理者のみ
   const role = session.user.role
   const isAdmin = role !== "sales" && role !== "production"
   if (!isAdmin) {
@@ -45,7 +44,6 @@ export async function GET(req: Request) {
   const yearParam = searchParams.get("year")
   const monthParam = searchParams.get("month")
 
-  // 利用可能な年月リスト（データがある月）を作る
   const allMonths = await prisma.applicationRecord.findMany({
     select: { year: true, month: true },
     distinct: ["year", "month"],
@@ -53,7 +51,6 @@ export async function GET(req: Request) {
   })
   const availableMonths = allMonths.map(m => ({ year: m.year, month: m.month }))
 
-  // 対象月：指定が無ければ最新月
   let targetYear: number | null = null
   let targetMonth: number | null = null
   if (yearParam && monthParam) {
@@ -70,18 +67,17 @@ export async function GET(req: Request) {
       target: null,
       overall: emptyFunnel(),
       byInflow: [],
+      overallAdCost: 0,
     })
   }
 
-  // 対象月の全応募明細を取得
+  // 応募明細
   const records = await prisma.applicationRecord.findMany({
     where: { year: targetYear, month: targetMonth },
     select: { status: true, inflow: true },
   })
 
-  // 全体ファネル
   const overall = emptyFunnel()
-  // 流入元別ファネル
   const inflowMap: Record<string, Funnel> = {}
 
   for (const r of records) {
@@ -90,15 +86,44 @@ export async function GET(req: Request) {
     addToFunnel(inflowMap[r.inflow], r.status)
   }
 
-  // 流入元別を応募数の多い順に並べる
+  // 広告費（その月）
+  const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
+  const adCostByInflow: Record<string, { costType: string; unitPrice: number | null; totalCost: number | null }> = {}
+  adCosts.forEach(a => {
+    adCostByInflow[a.inflow] = { costType: a.costType, unitPrice: a.unitPrice, totalCost: a.totalCost }
+  })
+
+  // 流入元ごとの広告費を算出
+  // 運用型=総額 / 成果報酬型=単価×その流入の応募数
+  const adCostOf = (inflow: string, apply: number): number | null => {
+    const ac = adCostByInflow[inflow]
+    if (!ac) return null
+    if (ac.costType === "operation") return ac.totalCost
+    if (ac.costType === "performance" && ac.unitPrice != null) return ac.unitPrice * apply
+    return null
+  }
+
   const byInflow = Object.entries(inflowMap)
-    .map(([inflow, f]) => ({ inflow, ...f }))
+    .map(([inflow, f]) => {
+      const adCost = adCostOf(inflow, f.apply)
+      return {
+        inflow,
+        ...f,
+        adCost,
+        cpaApply: adCost != null && f.apply > 0 ? Math.round(adCost / f.apply) : null,
+        cpaHire: adCost != null && f.hired > 0 ? Math.round(adCost / f.hired) : null,
+      }
+    })
     .sort((a, b) => b.apply - a.apply)
+
+  // 全体の広告費合計（算出できたものの合計）
+  const overallAdCost = byInflow.reduce((s, r) => s + (r.adCost ?? 0), 0)
 
   return NextResponse.json({
     availableMonths,
     target: { year: targetYear, month: targetMonth },
     overall,
     byInflow,
+    overallAdCost,
   })
 }
