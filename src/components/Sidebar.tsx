@@ -41,6 +41,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
     { href: "/import/applications", label: "📥 応募明細インポート" },
     { href: "/marketing/ad-costs", label: "📥 💰 広告費入力" },
     { href: "/marketing/area", label: "📥 🗾 エリア別分析" },
+    { href: "/marketing/cross", label: "📥 🔀 エリア×媒体" },
   ]
 
   const links = [
