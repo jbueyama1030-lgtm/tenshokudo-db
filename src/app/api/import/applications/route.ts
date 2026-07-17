@@ -5,33 +5,24 @@ import { PrismaClient } from "@prisma/client"
 const prisma = new PrismaClient()
 
 // 応募日文字列をパース：「2026/07/16(木)14:20:02」「2026/07/16(木)14:20」両対応
-// 曜日カッコを除去して Date にする
 function parseAppliedAt(raw: string): Date | null {
   if (!raw) return null
-  // 曜日カッコ (木) などを除去
   const cleaned = raw.replace(/\([^)]*\)/g, " ").trim()
-  // 例: "2026/07/16 14:20:02" または "2026/07/16 14:20"
   const m = cleaned.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/)
   if (!m) return null
   const [, y, mo, d, h, mi, s] = m
   const date = new Date(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(h),
-    Number(mi),
-    s ? Number(s) : 0
+    Number(y), Number(mo) - 1, Number(d),
+    Number(h), Number(mi), s ? Number(s) : 0
   )
   return isNaN(date.getTime()) ? null : date
 }
 
-// 企業IDを正規化：全角→半角、.0除去、前後空白除去
+// 企業ID正規化：全角→半角、.0除去、前後空白除去
 function normalizeCompanyId(raw: string): string {
   if (!raw) return ""
   let s = String(raw).trim()
-  // 全角数字→半角
   s = s.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-  // "3843.0" のような小数表記を整数に
   if (/^\d+\.0+$/.test(s)) s = s.split(".")[0]
   return s
 }
@@ -40,7 +31,6 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  // 管理者のみ取り込み可
   const role = session.user.role
   const isAdmin = role !== "sales" && role !== "production"
   if (!isAdmin) {
@@ -52,68 +42,70 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "データ形式が不正です" }, { status: 400 })
   }
 
-  // 企業マスタを一括取得（companyId → Company.id のマップ）
+  // 企業マスタ（companyId → Company.id）
   const companies = await prisma.company.findMany({ select: { id: true, companyId: true } })
   const companyMap: Record<string, string> = {}
-  companies.forEach(c => {
-    if (c.companyId) companyMap[c.companyId] = c.id
-  })
+  companies.forEach(c => { if (c.companyId) companyMap[c.companyId] = c.id })
 
+  // --- 1st pass: 全行をパースして、正規化済みレコード配列を作る ---
+  type Parsed = {
+    sourceCompanyId: string
+    appliedAt: Date
+    status: string
+    inflow: string
+    companyRef: string | null
+  }
+  const parsed: Parsed[] = []
+  const monthsInCsv = new Set<string>()   // "2026-7" 形式
   const results = { success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0 }
 
-  // このバッチ内で使用済みの (sourceCompanyId, 時刻ms, inflow) を記録し、
-  // 同一キー衝突時は appliedAt を1秒ずつ後ろにずらす（案B）
-  const usedKeys = new Set<string>()
-
   for (const row of rows) {
-    // row: { appliedAt, companyId, status, inflow }
-    const rawDate = row.appliedAt
     const sourceCompanyId = normalizeCompanyId(row.companyId)
     const status = (row.status ?? "").toString().trim()
     const inflow = (row.inflow ?? "").toString().trim() || "未設定"
+    const appliedAt = parseAppliedAt(row.appliedAt)
 
-    if (!rawDate || !sourceCompanyId) { results.skip++; continue }
+    if (!row.appliedAt || !sourceCompanyId || !appliedAt) { results.skip++; continue }
 
-    let appliedAt = parseAppliedAt(rawDate)
-    if (!appliedAt) { results.skip++; continue }
+    monthsInCsv.add(appliedAt.getFullYear() + "-" + (appliedAt.getMonth() + 1))
+    const companyRef = companyMap[sourceCompanyId] ?? null
+    if (!companyRef) results.unmatched++
 
-    // 案B：同一キー（企業ID＋時刻＋流入）が既に使われていたら1秒ずつずらす
-    let keyStr = sourceCompanyId + "|" + appliedAt.getTime() + "|" + inflow
+    parsed.push({ sourceCompanyId, appliedAt, status, inflow, companyRef })
+  }
+
+  // --- 洗い替え：CSVに含まれる年月の既存データを削除 ---
+  // これにより何度インポートしても重複しない
+  for (const ym of monthsInCsv) {
+    const [y, m] = ym.split("-").map(Number)
+    await prisma.applicationRecord.deleteMany({ where: { year: y, month: m } })
+  }
+
+  // --- 2nd pass: 秒ずらし（このインポート内での衝突のみ）して挿入 ---
+  const usedKeys = new Set<string>()
+
+  for (const p of parsed) {
+    let appliedAt = p.appliedAt
+    let keyStr = p.sourceCompanyId + "|" + appliedAt.getTime() + "|" + p.inflow
     let wasShifted = false
     while (usedKeys.has(keyStr)) {
-      appliedAt = new Date(appliedAt.getTime() + 1000) // +1秒
-      keyStr = sourceCompanyId + "|" + appliedAt.getTime() + "|" + inflow
+      appliedAt = new Date(appliedAt.getTime() + 1000)
+      keyStr = p.sourceCompanyId + "|" + appliedAt.getTime() + "|" + p.inflow
       wasShifted = true
     }
     usedKeys.add(keyStr)
     if (wasShifted) results.shifted++
 
-    const companyRef = companyMap[sourceCompanyId] ?? null
-    if (!companyRef) results.unmatched++
-
     try {
-      await prisma.applicationRecord.upsert({
-        where: {
-          uniqueApplication: {
-            sourceCompanyId,
-            appliedAt,
-            inflow,
-          },
-        },
-        update: {
-          status,
-          companyRef,
-          year: appliedAt.getFullYear(),
-          month: appliedAt.getMonth() + 1,
-        },
-        create: {
-          sourceCompanyId,
-          companyRef,
+      await prisma.applicationRecord.create({
+        data: {
+          sourceCompanyId: p.sourceCompanyId,
+          companyRef: p.companyRef,
           appliedAt,
           year: appliedAt.getFullYear(),
           month: appliedAt.getMonth() + 1,
-          status,
-          inflow,
+          status: p.status,
+          inflow: p.inflow,
         },
       })
       results.success++
