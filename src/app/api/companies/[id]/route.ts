@@ -43,7 +43,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 
   // 送られてきたキーだけ更新する（部分更新対応）
-  // これにより、インライン編集で一部フィールドのみ送っても他のデータが消えない
   const data: Record<string, unknown> = {}
 
   const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key)
@@ -82,7 +81,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (has("discountRate")) data.discountRate = body.discountRate != null ? Number(body.discountRate) : null
   if (has("workplaceCertLevel")) data.workplaceCertLevel = body.workplaceCertLevel != null ? Number(body.workplaceCertLevel) : 0
 
-  // 配列系（送られたときだけ更新。送られなければ触らない＝消えない）
+  // 配列系
   if (has("persona")) data.persona = body.persona ?? []
   if (has("apps")) data.apps = body.apps ?? []
   if (has("shifts")) data.shifts = body.shifts ?? []
@@ -96,6 +95,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   // JSON系
   if (has("driverSales")) data.driverSales = body.driverSales ?? null
+
+  // ===== 人材紹介（キャリアアドバイザー向け） =====
+  if (has("hasReferralContract")) data.hasReferralContract = Boolean(body.hasReferralContract)
+  if (has("referralFees")) data.referralFees = body.referralFees ?? []
+
+  // 受け入れ条件（3択: "ok" / "ng" / "consult" / null）
+  const CONDITION_3 = [
+    "condWorkSide", "condFemale", "condLgbtq", "condForeign",
+    "condSpecialTrain", "condAge64", "condTattoo", "condAccident",
+  ]
+  for (const key of CONDITION_3) {
+    if (has(key)) data[key] = body[key] || null
+  }
+
+  // 受け入れ条件（2択: true / false / null）
+  const CONDITION_2 = [
+    "condDorm", "condHousingSupport", "condFemaleFacility",
+    "condJobChangeLimit", "condGuarantor",
+  ]
+  for (const key of CONDITION_2) {
+    if (has(key)) data[key] = body[key] === null || body[key] === "" ? null : Boolean(body[key])
+  }
+
+  // 受け入れ条件（自由記入）
+  const CONDITION_TEXT = [
+    "condAgeRange", "condRetirementAge", "condIdealPerson",
+    "condHiringStandard", "condAppearance", "condMedicalHistory", "condNote",
+  ]
+  for (const key of CONDITION_TEXT) {
+    if (has(key)) data[key] = body[key] || null
+  }
 
   const company = await prisma.company.update({
     where: { id },
