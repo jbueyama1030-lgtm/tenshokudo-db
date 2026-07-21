@@ -13,6 +13,8 @@ model User {
   password  String
   name      String
   role      String    @default("sales")
+  roles     String[]  @default([])
+  isActive  Boolean   @default(true)
   chatworkAccountId String?
   createdAt DateTime  @default(now())
   companies Company[]
@@ -80,6 +82,38 @@ model Company {
 
   // ドライバー売上情報
   driverSales Json?
+
+  // ===== 人材紹介（キャリアアドバイザー向け） =====
+  // 紹介契約の有無（手動フラグ）
+  hasReferralContract Boolean @default(false)
+  // 紹介単価（[{ condition: "〜39歳", amount: 300000 }, ...]）
+  referralFees Json?
+
+  // 受け入れ条件（3択: "ok"=可能 / "ng"=不可能 / "consult"=要相談 / null=未入力）
+  condWorkSide      String?   // Wワーク・副業
+  condFemale        String?   // 女性雇用
+  condLgbtq         String?   // LGBTQ受け入れ
+  condForeign       String?   // 外国籍雇用
+  condSpecialTrain  String?   // 特別講習対応
+  condAge64         String?   // 64歳未経験
+  condTattoo        String?   // タトゥー・刺青受け入れ
+  condAccident      String?   // 事故・違反者受け入れ
+
+  // 受け入れ条件（2択: true/false/null=未入力）
+  condDorm          Boolean?  // 寮
+  condHousingSupport Boolean? // 住宅支援
+  condFemaleFacility Boolean? // 女性専用設備
+  condJobChangeLimit Boolean? // 転職回数制限
+  condGuarantor      Boolean? // 保証人（true=要 / false=不要）
+
+  // 受け入れ条件（自由記入）
+  condAgeRange      String?   // 採用可能年齢
+  condRetirementAge String?   // 定年
+  condIdealPerson   String?  @db.Text  // 求める人物像
+  condHiringStandard String? @db.Text  // 採用基準
+  condAppearance    String?  @db.Text  // 身だしなみ
+  condMedicalHistory String? @db.Text  // 既往歴
+  condNote          String?  @db.Text  // 備考（自由記述）
 
   // 月次実績
   monthlyRecords MonthlyRecord[]
