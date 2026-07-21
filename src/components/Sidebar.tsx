@@ -39,9 +39,9 @@ export default function Sidebar({ userName }: { userName?: string }) {
   const adminLinks = [
     { href: "/marketing", label: "📊 マーケ分析" },
     { href: "/import/applications", label: "📥 応募明細インポート" },
-    { href: "/marketing/ad-costs", label: "📥 💰 広告費入力" },
-    { href: "/marketing/area", label: "📥 🗾 エリア別分析" },
-    { href: "/marketing/cross", label: "📥 🔀 エリア×媒体" },
+    { href: "/marketing/ad-costs", label: "💰 広告費入力" },
+    { href: "/marketing/area", label: "🗾 エリア別分析" },
+    { href: "/marketing/cross", label: "🔀 エリア×媒体" },
     { href: "/marketing/trend", label: "📈 月次トレンド" },
   ]
 
