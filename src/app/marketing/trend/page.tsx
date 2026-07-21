@@ -5,6 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 type TrendData = {
   range: string
+  excludeOrganic: boolean
   months: string[]
   topInflows: string[]
   applyTrend: Record<string, string | number>[]
@@ -20,11 +21,12 @@ export default function MarketingTrendPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [range, setRange] = useState("12")
+  const [excludeOrganic, setExcludeOrganic] = useState(true)
 
-  const load = async (r: string) => {
+  const load = async (r: string, exclude: boolean) => {
     setLoading(true)
     setError("")
-    const res = await fetch("/api/marketing/trend?range=" + r)
+    const res = await fetch("/api/marketing/trend?range=" + r + "&excludeOrganic=" + (exclude ? "1" : "0"))
     if (res.ok) {
       setData(await res.json())
     } else {
@@ -36,12 +38,18 @@ export default function MarketingTrendPage() {
 
   useEffect(() => {
     fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
-    load(range)
+    load(range, excludeOrganic)
   }, [])
 
   const changeRange = (r: string) => {
     setRange(r)
-    load(r)
+    load(r, excludeOrganic)
+  }
+
+  const toggleOrganic = () => {
+    const next = !excludeOrganic
+    setExcludeOrganic(next)
+    load(range, next)
   }
 
   const ranges = [
@@ -60,16 +68,24 @@ export default function MarketingTrendPage() {
               <div className="text-xs text-gray-400 mb-1">マーケティング分析</div>
               <h1 className="text-xl font-bold text-gray-800">月次トレンド</h1>
             </div>
-            <div className="flex gap-2">
-              {ranges.map(r => (
-                <button
-                  key={r.key}
-                  onClick={() => changeRange(r.key)}
-                  className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " + (range === r.key ? "bg-blue-600 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-blue-400")}
-                >
-                  {r.label}
-                </button>
-              ))}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={toggleOrganic}
+                className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors border " + (excludeOrganic ? "bg-amber-50 text-amber-700 border-amber-300" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400")}
+              >
+                {excludeOrganic ? "✓ 自然流入を除外中" : "自然流入を含む"}
+              </button>
+              <div className="flex gap-2">
+                {ranges.map(r => (
+                  <button
+                    key={r.key}
+                    onClick={() => changeRange(r.key)}
+                    className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " + (range === r.key ? "bg-blue-600 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-blue-400")}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -87,7 +103,7 @@ export default function MarketingTrendPage() {
               <div className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold text-gray-700">応募数の推移（上位{data.topInflows.length}媒体）</h2>
-                  <span className="text-xs text-gray-400">期間内の応募数上位媒体を表示</span>
+                  <span className="text-xs text-gray-400">凡例をクリックで表示/非表示を切替できます</span>
                 </div>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={data.applyTrend} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
@@ -95,7 +111,7 @@ export default function MarketingTrendPage() {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#9ca3af" />
                     <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" />
                     <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} />
                     {data.topInflows.map((inf, i) => (
                       <Line key={inf} type="monotone" dataKey={inf} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 2 }} />
                     ))}
@@ -107,7 +123,7 @@ export default function MarketingTrendPage() {
               <div className="bg-white rounded-xl border border-gray-200 p-5">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold text-gray-700">歩留まり率の推移（全媒体合算）</h2>
-                  <span className="text-xs text-gray-400">応募に対する各段階の到達率</span>
+                  <span className="text-xs text-gray-400">自然流入の除外設定に関わらず全媒体で集計</span>
                 </div>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={data.rateTrend} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
@@ -115,7 +131,7 @@ export default function MarketingTrendPage() {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#9ca3af" />
                     <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" unit="%" />
                     <Tooltip formatter={(v) => String(v) + "%"} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} />
                     <Line type="monotone" dataKey="contactRate" name="接触率" stroke="#2563eb" strokeWidth={2} dot={{ r: 2 }} />
                     <Line type="monotone" dataKey="interviewRate" name="面接実施率" stroke="#9333ea" strokeWidth={2} dot={{ r: 2 }} />
                     <Line type="monotone" dataKey="hireRate" name="入社率" stroke="#16a34a" strokeWidth={2} dot={{ r: 2 }} />
@@ -135,7 +151,7 @@ export default function MarketingTrendPage() {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#9ca3af" />
                     <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" tickFormatter={(v) => "¥" + (Number(v) / 10000) + "万"} />
                     <Tooltip formatter={(v) => "¥" + Number(v).toLocaleString("ja-JP")} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 12, cursor: "pointer" }} />
                     {data.topInflows.map((inf, i) => (
                       <Line key={inf} type="monotone" dataKey={inf} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
                     ))}

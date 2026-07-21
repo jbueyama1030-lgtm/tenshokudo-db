@@ -10,7 +10,10 @@ const HIRED = ["入社"]
 
 const TOP_INFLOW_COUNT = 6
 
-type MonthKey = string  // "2026-07"
+// 自然流入とみなす流入元（広告媒体の比較時に除外できるようにする）
+const ORGANIC_INFLOWS = ["未設定", "直応募"]
+
+type MonthKey = string
 
 function monthKey(y: number, m: number): MonthKey {
   return y + "-" + String(m).padStart(2, "0")
@@ -27,31 +30,28 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url)
-  // range: "12" | "24" | "all"
   const range = searchParams.get("range") ?? "12"
+  const excludeOrganic = searchParams.get("excludeOrganic") === "1"
 
-  // データのある月の範囲を把握
   const allMonths = await prisma.applicationRecord.findMany({
     select: { year: true, month: true },
     distinct: ["year", "month"],
     orderBy: [{ year: "desc" }, { month: "desc" }],
   })
   if (allMonths.length === 0) {
-    return NextResponse.json({ range, months: [], topInflows: [], applyTrend: [], rateTrend: [], cpaTrend: [] })
+    return NextResponse.json({ range, excludeOrganic, months: [], topInflows: [], applyTrend: [], rateTrend: [], cpaTrend: [] })
   }
 
-  // 対象月リストを作る（新しい順に並んでいるので、必要な件数だけ取って昇順に戻す）
   let targetMonths = allMonths.map(m => ({ year: m.year, month: m.month }))
   if (range !== "all") {
     const n = Number(range)
     targetMonths = targetMonths.slice(0, n)
   }
-  targetMonths.reverse()  // 古い順
+  targetMonths.reverse()
 
   const minYear = targetMonths[0].year
   const maxYear = targetMonths[targetMonths.length - 1].year
 
-  // 対象期間の応募明細を取得（年で粗く絞ってからJS側で月をフィルタ）
   const targetSet = new Set(targetMonths.map(t => monthKey(t.year, t.month)))
   const records = await prisma.applicationRecord.findMany({
     where: { year: { gte: minYear, lte: maxYear } },
@@ -59,9 +59,10 @@ export async function GET(req: Request) {
   })
   const filtered = records.filter(r => targetSet.has(monthKey(r.year, r.month)))
 
-  // 期間内の応募数上位媒体を決める
+  // 上位媒体の選定（未設定除外オプションを反映）
   const inflowTotal: Record<string, number> = {}
   for (const r of filtered) {
+    if (excludeOrganic && ORGANIC_INFLOWS.includes(r.inflow)) continue
     inflowTotal[r.inflow] = (inflowTotal[r.inflow] || 0) + 1
   }
   const topInflows = Object.entries(inflowTotal)
@@ -70,7 +71,6 @@ export async function GET(req: Request) {
     .map(([inflow]) => inflow)
   const topSet = new Set(topInflows)
 
-  // 月 × 媒体 の集計器
   type Agg = { apply: number; contact: number; interviewDone: number; hired: number }
   const emptyAgg = (): Agg => ({ apply: 0, contact: 0, interviewDone: 0, hired: 0 })
 
@@ -94,22 +94,20 @@ export async function GET(req: Request) {
       if (INTERVIEW_DONE.includes(r.status)) a.interviewDone++
       if (HIRED.includes(r.status)) a.hired++
     }
+    // 歩留まり率グラフは常に全媒体合算（除外の影響を受けない）
     bump(byMonthTotal[k])
     if (topSet.has(r.inflow)) bump(byMonthInflow[k][r.inflow])
   }
 
-  // 広告費（対象期間）
   const adCosts = await prisma.adCost.findMany({
     where: { year: { gte: minYear, lte: maxYear } },
   })
-  // month-inflow → 広告費算出用
   const adCostMap: Record<string, { costType: string; unitPrice: number | null; totalCost: number | null }> = {}
   adCosts.forEach(a => {
     const k = monthKey(a.year, a.month) + "|" + a.inflow
     adCostMap[k] = { costType: a.costType, unitPrice: a.unitPrice, totalCost: a.totalCost }
   })
 
-  // A: 応募数トレンド（月 × 上位媒体）
   const applyTrend = targetMonths.map(t => {
     const k = monthKey(t.year, t.month)
     const row: Record<string, string | number> = { month: k }
@@ -117,7 +115,6 @@ export async function GET(req: Request) {
     return row
   })
 
-  // C: 歩留まり率トレンド（全体の接触率・入社率）
   const rateTrend = targetMonths.map(t => {
     const k = monthKey(t.year, t.month)
     const a = byMonthTotal[k]
@@ -130,7 +127,6 @@ export async function GET(req: Request) {
     }
   })
 
-  // B: 入社CPAトレンド（月 × 上位媒体。広告費のある月だけ値が入る）
   const cpaTrend = targetMonths.map(t => {
     const k = monthKey(t.year, t.month)
     const row: Record<string, string | number | null> = { month: k }
@@ -149,6 +145,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     range,
+    excludeOrganic,
     months: targetMonths.map(t => monthKey(t.year, t.month)),
     topInflows,
     applyTrend,
