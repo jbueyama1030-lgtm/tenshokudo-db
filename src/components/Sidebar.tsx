@@ -42,6 +42,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
     { href: "/marketing/ad-costs", label: "📥 💰 広告費入力" },
     { href: "/marketing/area", label: "📥 🗾 エリア別分析" },
     { href: "/marketing/cross", label: "📥 🔀 エリア×媒体" },
+    { href: "/marketing/trend", label: "📈 月次トレンド" },
   ]
 
   const links = [
