@@ -7,12 +7,14 @@ const prisma = new PrismaClient()
 
 const STATUS_LABELS: Record<string, string> = {
   contracted: "✅ 契約中",
+  referral_only: "🤝 人材紹介のみ",
   approaching: "📋 アプローチ中",
   delisted: "📉 掲載落ち",
 }
 
 const STATUS_COLORS: Record<string, string> = {
   contracted: "bg-green-100 text-green-800",
+  referral_only: "bg-emerald-100 text-emerald-800",
   approaching: "bg-blue-100 text-blue-800",
   delisted: "bg-gray-100 text-gray-600",
 }
@@ -71,6 +73,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const statusTabs = [
     { key: "all", label: "すべて" },
     { key: "contracted", label: "✅ 契約中" },
+    { key: "referral_only", label: "🤝 人材紹介のみ" },
     { key: "approaching", label: "📋 アプローチ中" },
     { key: "delisted", label: "📉 掲載落ち" },
   ]

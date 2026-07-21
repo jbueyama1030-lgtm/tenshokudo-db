@@ -89,6 +89,7 @@ export default function NewCompanyPage() {
             >
               <option value="approaching">📋 アプローチ中</option>
               <option value="contracted">✅ 契約中</option>
+              <option value="referral_only">🤝 人材紹介のみ契約中</option>
               <option value="delisted">📉 掲載落ち</option>
             </select>
           </div>

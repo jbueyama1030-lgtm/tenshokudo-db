@@ -121,6 +121,7 @@ const TASK_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   contracted: { label: "✅ 契約中", cls: "bg-green-100 text-green-800" },
+  referral_only: { label: "🤝 人材紹介のみ", cls: "bg-emerald-100 text-emerald-800" },
   approaching: { label: "📋 アプローチ中", cls: "bg-blue-100 text-blue-800" },
   delisted: { label: "📉 掲載落ち", cls: "bg-gray-100 text-gray-600" },
 }
@@ -513,9 +514,22 @@ export default function CompanyDetailPage() {
               </Field>
               <Field label="ステータス">
                 {editing ? (
-                  <select value={form.status ?? ""} onChange={e => set("status", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                  <select
+                    value={form.status ?? ""}
+                    onChange={e => {
+                      const v = e.target.value
+                      setForm(f => ({
+                        ...f,
+                        status: v,
+                        // 人材紹介のみを選んだら紹介契約を自動でオンにする
+                        hasReferralContract: v === "referral_only" ? true : f.hasReferralContract,
+                      }))
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+                  >
                     <option value="approaching">📋 アプローチ中</option>
                     <option value="contracted">✅ 契約中</option>
+                    <option value="referral_only">🤝 人材紹介のみ契約中</option>
                     <option value="delisted">📉 掲載落ち</option>
                   </select>
                 ) : <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_MAP[company.status]?.cls ?? "")}>{STATUS_MAP[company.status]?.label ?? company.status}</span>}
