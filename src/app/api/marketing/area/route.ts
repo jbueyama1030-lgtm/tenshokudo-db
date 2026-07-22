@@ -1,16 +1,15 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canViewMarketing } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
-// ファネル分類
 const NO_CONTACT = ["未対応", "連絡取れず"]
 const INTERVIEW_SET = ["面接設定済み", "面接完了", "内定通知済み", "入社", "面接・内定後辞退"]
 const INTERVIEW_DONE = ["面接完了", "内定通知済み", "入社", "面接・内定後辞退"]
 const HIRED = ["入社"]
 
-// 47都道府県
 const PREFECTURES = [
   "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
   "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
@@ -51,10 +50,8 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
-  if (!isAdmin) {
-    return NextResponse.json({ error: "管理者のみ閲覧できます" }, { status: 403 })
+  if (!canViewMarketing(session)) {
+    return NextResponse.json({ error: "マーケティング分析の閲覧権限がありません" }, { status: 403 })
   }
 
   const { searchParams } = new URL(req.url)
@@ -82,7 +79,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ availableMonths, target: null, byArea: [] })
   }
 
-  // 対象月の応募明細（企業の住所も一緒に引く）
   const records = await prisma.applicationRecord.findMany({
     where: { year: targetYear, month: targetMonth },
     select: {
@@ -92,23 +88,20 @@ export async function GET(req: Request) {
     },
   })
 
-  // 広告費（成果報酬型のみエリア配分に使う）
   const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
-  const perfUnitPrice: Record<string, number> = {}  // 流入元 → 単価（成果報酬型のみ）
+  const perfUnitPrice: Record<string, number> = {}
   adCosts.forEach(a => {
     if (a.costType === "performance" && a.unitPrice != null) {
       perfUnitPrice[a.inflow] = a.unitPrice
     }
   })
 
-  // 都道府県別に集計
   const areaMap: Record<string, Funnel & { perfAdCost: number }> = {}
 
   for (const r of records) {
     const pref = extractPref(r.company?.address ?? null)
     if (!areaMap[pref]) areaMap[pref] = { ...emptyFunnel(), perfAdCost: 0 }
     addToFunnel(areaMap[pref], r.status)
-    // 成果報酬型なら、この応募1件ぶんの広告費をこのエリアに加算
     const unit = perfUnitPrice[r.inflow]
     if (unit != null) areaMap[pref].perfAdCost += unit
   }
@@ -122,7 +115,6 @@ export async function GET(req: Request) {
       interviewDone: f.interviewDone,
       hired: f.hired,
       perfAdCost: f.perfAdCost,
-      // 成果報酬型ぶんのみのCPA（参考値）
       perfCpaApply: f.perfAdCost > 0 && f.apply > 0 ? Math.round(f.perfAdCost / f.apply) : null,
       perfCpaHire: f.perfAdCost > 0 && f.hired > 0 ? Math.round(f.perfAdCost / f.hired) : null,
     }))

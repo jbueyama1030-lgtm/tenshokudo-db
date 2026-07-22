@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
 import bcrypt from "bcryptjs"
+import { canManageUsers } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -13,8 +14,6 @@ function sanitizeRoles(input: unknown): string[] {
   return Array.from(new Set(filtered))
 }
 
-// roles の代表値を role に入れる（既存コードとの互換のため）
-// admin を含むなら admin、次に production、それ以外は先頭 or sales
 function primaryRole(roles: string[]): string {
   if (roles.includes("admin")) return "admin"
   if (roles.includes("production")) return "production"
@@ -22,6 +21,7 @@ function primaryRole(roles: string[]): string {
   return roles[0] ?? "sales"
 }
 
+// GET は全ロールに開放（担当者プルダウン等で使用。パスワードは返さない）
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -41,6 +41,10 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canManageUsers(session)) {
+    return NextResponse.json({ error: "ユーザー管理の権限がありません" }, { status: 403 })
+  }
 
   const body = await request.json()
   const { name, email, password, chatworkAccountId } = body
@@ -86,6 +90,10 @@ export async function PATCH(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  if (!canManageUsers(session)) {
+    return NextResponse.json({ error: "ユーザー管理の権限がありません" }, { status: 403 })
+  }
+
   const body = await request.json()
   const { id } = body
 
@@ -101,14 +109,11 @@ export async function PATCH(request: Request) {
   const data: Record<string, unknown> = {}
   const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key)
 
-  // ChatWorkアカウントID
   if (has("chatworkAccountId")) {
     data.chatworkAccountId = body.chatworkAccountId || null
   }
 
-  // ロール変更
   if (has("roles")) {
-    // ガード：自分自身のロールは変更できない
     if (id === session.user.id) {
       return NextResponse.json({ error: "自分自身のロールは変更できません" }, { status: 400 })
     }
@@ -116,7 +121,6 @@ export async function PATCH(request: Request) {
     if (roles.length === 0) {
       return NextResponse.json({ error: "ロールを1つ以上選択してください" }, { status: 400 })
     }
-    // ガード：最後の有効な管理者から admin を外せない
     if (target.roles.includes("admin") && !roles.includes("admin")) {
       const adminCount = await prisma.user.count({
         where: { isActive: true, roles: { has: "admin" } },
@@ -129,13 +133,10 @@ export async function PATCH(request: Request) {
     data.role = primaryRole(roles)
   }
 
-  // 有効/無効の切替
   if (has("isActive")) {
-    // ガード：自分自身は無効化できない
     if (id === session.user.id && body.isActive === false) {
       return NextResponse.json({ error: "自分自身を無効化することはできません" }, { status: 400 })
     }
-    // ガード：最後の有効な管理者は無効化できない
     if (body.isActive === false && target.roles.includes("admin")) {
       const adminCount = await prisma.user.count({
         where: { isActive: true, roles: { has: "admin" } },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canViewMarketing } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -10,7 +11,6 @@ const HIRED = ["入社"]
 
 const TOP_INFLOW_COUNT = 6
 
-// 自然流入とみなす流入元（広告媒体の比較時に除外できるようにする）
 const ORGANIC_INFLOWS = ["未設定", "直応募"]
 
 type MonthKey = string
@@ -23,10 +23,8 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
-  if (!isAdmin) {
-    return NextResponse.json({ error: "管理者のみ閲覧できます" }, { status: 403 })
+  if (!canViewMarketing(session)) {
+    return NextResponse.json({ error: "マーケティング分析の閲覧権限がありません" }, { status: 403 })
   }
 
   const { searchParams } = new URL(req.url)
@@ -59,7 +57,6 @@ export async function GET(req: Request) {
   })
   const filtered = records.filter(r => targetSet.has(monthKey(r.year, r.month)))
 
-  // 上位媒体の選定（未設定除外オプションを反映）
   const inflowTotal: Record<string, number> = {}
   for (const r of filtered) {
     if (excludeOrganic && ORGANIC_INFLOWS.includes(r.inflow)) continue
@@ -94,7 +91,6 @@ export async function GET(req: Request) {
       if (INTERVIEW_DONE.includes(r.status)) a.interviewDone++
       if (HIRED.includes(r.status)) a.hired++
     }
-    // 歩留まり率グラフは常に全媒体合算（除外の影響を受けない）
     bump(byMonthTotal[k])
     if (topSet.has(r.inflow)) bump(byMonthInflow[k][r.inflow])
   }

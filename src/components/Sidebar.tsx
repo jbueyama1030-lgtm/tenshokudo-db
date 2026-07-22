@@ -5,12 +5,15 @@ import { useEffect, useState } from "react"
 
 export default function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname()
-  const [role, setRole] = useState<string>("")
+  const [roles, setRoles] = useState<string[]>([])
   const [unassignedCount, setUnassignedCount] = useState(0)
 
   useEffect(() => {
     fetch("/api/auth/session").then(r => r.json()).then(s => {
-      setRole(s?.user?.role ?? "")
+      const rs = s?.user?.roles
+      if (Array.isArray(rs) && rs.length > 0) setRoles(rs)
+      else if (s?.user?.role) setRoles([s.user.role])
+      else setRoles([])
     })
     fetch("/api/production-tasks").then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
@@ -19,36 +22,51 @@ export default function Sidebar({ userName }: { userName?: string }) {
     })
   }, [])
 
-  const isProduction = role === "production"
-  const isAdmin = role !== "sales" && role !== "production"
+  const isSales = roles.includes("sales")
+  const isProduction = roles.includes("production")
+  const isMarketer = roles.includes("marketer")
+  const isAdmin = roles.includes("admin")
 
-  const salesLinks = [
+  // 全ロール共通
+  const commonLinks = [
     { href: "/dashboard", label: "📊 ダッシュボード" },
     { href: "/companies", label: "🏢 企業一覧" },
-    { href: "/companies/new", label: "➕ 企業追加" },
-    { href: "/companies/import", label: "📥 CSVインポート" },
-    { href: "/users", label: "👥 ユーザー管理" },
-    { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
-    { href: "/companies/import-monthly", label: "📈 月次インポート" },
   ]
 
+  // 営業・管理者のみ
+  const salesLinks = [
+    { href: "/companies/new", label: "➕ 企業追加" },
+  ]
+
+  // 制作・管理者のみ
   const productionLinks = [
     { href: "/production", label: "🎨 制作ダッシュボード" },
   ]
 
-  const adminLinks = [
-    { href: "/marketing", label: "📊 マーケ分析" },
+  // マーケター・管理者のみ（インポート系＋マーケ分析）
+  const marketerLinks = [
+    { href: "/companies/import", label: "📥 CSVインポート" },
+    { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
+    { href: "/companies/import-monthly", label: "📈 月次インポート" },
     { href: "/import/applications", label: "📥 応募明細インポート" },
+    { href: "/marketing", label: "📊 マーケ分析" },
     { href: "/marketing/ad-costs", label: "💰 広告費入力" },
     { href: "/marketing/area", label: "🗾 エリア別分析" },
     { href: "/marketing/cross", label: "🔀 エリア×媒体" },
     { href: "/marketing/trend", label: "📈 月次トレンド" },
   ]
 
+  // 管理者のみ
+  const adminOnlyLinks = [
+    { href: "/users", label: "👥 ユーザー管理" },
+  ]
+
   const links = [
-    ...salesLinks,
+    ...commonLinks,
+    ...(isSales || isAdmin ? salesLinks : []),
     ...(isProduction || isAdmin ? productionLinks : []),
-    ...(isAdmin ? adminLinks : []),
+    ...(isMarketer || isAdmin ? marketerLinks : []),
+    ...(isAdmin ? adminOnlyLinks : []),
   ]
 
   return (

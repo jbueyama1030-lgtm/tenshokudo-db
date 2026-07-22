@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canImportData } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -47,6 +48,10 @@ function parseApps(val: string): string[] {
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canImportData(session)) {
+    return NextResponse.json({ error: "データ取り込みの権限がありません" }, { status: 403 })
+  }
 
   const { rows } = await req.json()
 

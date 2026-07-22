@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canViewMarketing } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -34,10 +35,8 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
-  if (!isAdmin) {
-    return NextResponse.json({ error: "マーケティングダッシュボードは管理者のみ閲覧できます" }, { status: 403 })
+  if (!canViewMarketing(session)) {
+    return NextResponse.json({ error: "マーケティング分析の閲覧権限がありません" }, { status: 403 })
   }
 
   const { searchParams } = new URL(req.url)
@@ -93,8 +92,6 @@ export async function GET(req: Request) {
     adCostByInflow[a.inflow] = { costType: a.costType, unitPrice: a.unitPrice, totalCost: a.totalCost }
   })
 
-  // 流入元ごとの広告費を算出
-  // 運用型=総額 / 成果報酬型=単価×その流入の応募数
   const adCostOf = (inflow: string, apply: number): number | null => {
     const ac = adCostByInflow[inflow]
     if (!ac) return null
@@ -116,7 +113,6 @@ export async function GET(req: Request) {
     })
     .sort((a, b) => b.apply - a.apply)
 
-  // 全体の広告費合計（算出できたものの合計）
   const overallAdCost = byInflow.reduce((s, r) => s + (r.adCost ?? 0), 0)
 
   return NextResponse.json({

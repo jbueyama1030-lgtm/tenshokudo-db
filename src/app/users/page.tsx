@@ -42,8 +42,9 @@ export default function UsersPage() {
   const [generatedPassword, setGeneratedPassword] = useState("")
   const [userName, setUserName] = useState("")
   const [myId, setMyId] = useState("")
+  const [isAdminUser, setIsAdminUser] = useState(false)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
 
-  // 編集パネル
   const [editingId, setEditingId] = useState("")
   const [editRoles, setEditRoles] = useState<string[]>([])
   const [editChatwork, setEditChatwork] = useState("")
@@ -61,6 +62,10 @@ export default function UsersPage() {
     fetch("/api/auth/session").then(r => r.json()).then(s => {
       setUserName(s?.user?.name ?? "")
       setMyId(s?.user?.id ?? "")
+      const rs = s?.user?.roles
+      const effective = Array.isArray(rs) && rs.length > 0 ? rs : (s?.user?.role ? [s.user.role] : [])
+      setIsAdminUser(effective.includes("admin"))
+      setSessionLoaded(true)
     })
   }, [])
 
@@ -130,7 +135,6 @@ export default function UsersPage() {
       id: user.id,
       chatworkAccountId: editChatwork.trim(),
     }
-    // 自分自身の場合、ロールは送らない（サーバー側でも弾かれる）
     if (user.id !== myId) payload.roles = editRoles
 
     const res = await fetch("/api/users", {
@@ -167,6 +171,20 @@ export default function UsersPage() {
       const d = await res.json()
       setRowError(d.error ?? "変更に失敗しました")
     }
+  }
+
+  if (sessionLoaded && !isAdminUser) {
+    return (
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar userName={userName} />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-gray-400 text-lg mb-2">アクセス権限がありません</p>
+            <p className="text-gray-400 text-sm">ユーザー管理は管理者のみ利用できます</p>
+          </div>
+        </main>
+      </div>
+    )
   }
 
   return (

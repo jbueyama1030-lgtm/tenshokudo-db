@@ -1,76 +1,106 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canImportData } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
-export async function GET() {
+export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const companies = await prisma.company.findMany({
-    include: { user: { select: { id: true, name: true } } },
-    orderBy: { updatedAt: "desc" },
+  if (!canImportData(session)) {
+    return NextResponse.json({ error: "データ取り込みの権限がありません" }, { status: 403 })
+  }
+
+  const { rows } = await req.json()
+
+  // 企業ID × 年月 ごとに集計
+  const recordMap: Record<string, {
+    companyId: string
+    year: number
+    month: number
+    applyCount: number
+    hireCount: number
+    inflow: Record<string, number>
+  }> = {}
+
+  for (const row of rows) {
+    const dateStr = row[0]?.trim()   // 例: 2026/06/15(月)10:40
+    const companyId = row[2]?.trim()
+    const status = row[16]?.trim()
+    const inflow = row[17]?.trim() || "未設定"
+
+    if (!companyId || !dateStr) continue
+
+    // 年月をパース（月のゼロ埋めなしにも対応）
+    const match = dateStr.match(/(\d{4})\/(\d{1,2})/)
+    if (!match) continue
+    const year = parseInt(match[1])
+    const month = parseInt(match[2])
+
+    const key = companyId + "__" + year + "__" + month
+
+    if (!recordMap[key]) {
+      recordMap[key] = { companyId, year, month, applyCount: 0, hireCount: 0, inflow: {} }
+    }
+
+    recordMap[key].applyCount++
+
+    if (status?.includes("入社")) {
+      recordMap[key].hireCount++
+    }
+
+    recordMap[key].inflow[inflow] = (recordMap[key].inflow[inflow] || 0) + 1
+  }
+
+  const results = { success: 0, notFound: 0, error: 0 }
+  const notFoundIds: string[] = []
+
+  for (const data of Object.values(recordMap)) {
+    const companyId = data.companyId
+
+    const company = await prisma.company.findUnique({
+      where: { companyId },
+    })
+
+    if (!company) {
+      results.notFound++
+      notFoundIds.push(companyId)
+      continue
+    }
+
+    try {
+      await prisma.monthlyRecord.upsert({
+        where: {
+          companyId_year_month: {
+            companyId: company.id,
+            year: data.year,
+            month: data.month,
+          },
+        },
+        update: {
+          applyCount: data.applyCount,
+          hireCount: data.hireCount,
+          inflowBreakdown: data.inflow,
+        },
+        create: {
+          companyId: company.id,
+          year: data.year,
+          month: data.month,
+          applyCount: data.applyCount,
+          hireCount: data.hireCount,
+          inflowBreakdown: data.inflow,
+        },
+      })
+      results.success++
+    } catch {
+      results.error++
+    }
+  }
+
+  return NextResponse.json({
+    ...results,
+    notFoundIds: [...new Set(notFoundIds)],
   })
-
-  return NextResponse.json(companies)
-}
-
-export async function POST(request: Request) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-
-  const body = await request.json()
-
-  if (!body.name) return NextResponse.json({ error: "会社名は必須です" }, { status: 400 })
-
-  const company = await prisma.company.create({
-    data: {
-      // 基本情報
-      name: body.name,
-      companyId: body.companyId || null,
-      status: body.status || "approaching",
-      userId: body.userId || session.user.id,
-      phone: body.phone || null,
-      address: body.address || null,
-      persona: body.persona ?? [],
-      media: body.media || null,
-      memo: body.memo || null,
-
-      // 企業情報
-      vehicleCount: body.vehicleCount ? Number(body.vehicleCount) : null,
-      driverCount: body.driverCount ? Number(body.driverCount) : null,
-      annualHiringTarget: body.annualHiringTarget ? Number(body.annualHiringTarget) : null,
-      adoptionChallenge: body.adoptionChallenge || null,
-      apps: body.apps ?? [],
-      dispatchRatio: body.dispatchRatio || null,
-      shifts: body.shifts ?? [],
-
-      // 競合媒体
-      competitorMedia: body.competitorMedia ?? [],
-      tenshokudoCostPerHire: body.tenshokudoCostPerHire ? Number(body.tenshokudoCostPerHire) : null,
-
-      // 売上管理
-      planName: body.planName || null,
-      monthlyFee: body.monthlyFee ? Number(body.monthlyFee) : null,
-      discountRate: body.discountRate ? Number(body.discountRate) : null,
-      discountNote: body.discountNote || null,
-      options: body.options ?? [],
-      contractStart: body.contractStart ? new Date(body.contractStart) : null,
-      contractRenewal: body.contractRenewal ? new Date(body.contractRenewal) : null,
-
-      // 商談管理
-      temperature: body.temperature || null,
-      negotiationMemo: body.negotiationMemo || null,
-      nextAction: body.nextAction || null,
-      nextActionDate: body.nextActionDate ? new Date(body.nextActionDate) : null,
-
-      // 実績
-      applyCount: body.applyCount ?? 0,
-      hireCount: body.hireCount ?? 0,
-    },
-    include: { user: { select: { id: true, name: true } } },
-  })
-
-  return NextResponse.json(company)
 }

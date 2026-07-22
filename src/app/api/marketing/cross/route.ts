@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canViewMarketing } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -49,16 +50,14 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
-  if (!isAdmin) {
-    return NextResponse.json({ error: "管理者のみ閲覧できます" }, { status: 403 })
+  if (!canViewMarketing(session)) {
+    return NextResponse.json({ error: "マーケティング分析の閲覧権限がありません" }, { status: 403 })
   }
 
   const { searchParams } = new URL(req.url)
   const yearParam = searchParams.get("year")
   const monthParam = searchParams.get("month")
-  const areaParam = searchParams.get("area")  // 選択中のエリア（都道府県）
+  const areaParam = searchParams.get("area")
 
   const allMonths = await prisma.applicationRecord.findMany({
     select: { year: true, month: true },
@@ -81,7 +80,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ availableMonths, target: null, areas: [], selectedArea: null, byInflow: [] })
   }
 
-  // 対象月の応募明細（住所も引く）
   const records = await prisma.applicationRecord.findMany({
     where: { year: targetYear, month: targetMonth },
     select: {
@@ -91,7 +89,6 @@ export async function GET(req: Request) {
     },
   })
 
-  // エリアごとの応募数（タブ/プルダウンの並び用）
   const areaApplyCount: Record<string, number> = {}
   for (const r of records) {
     const pref = extractPref(r.company?.address ?? null)
@@ -101,10 +98,8 @@ export async function GET(req: Request) {
     .map(([area, count]) => ({ area, count }))
     .sort((a, b) => b.count - a.count)
 
-  // 選択エリア：指定が無ければ応募数最多のエリア
   const selectedArea = areaParam || (areas.length > 0 ? areas[0].area : null)
 
-  // 広告費（成果報酬型のみ、エリア配分に使う）
   const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
   const perfUnitPrice: Record<string, number> = {}
   adCosts.forEach(a => {
@@ -113,7 +108,6 @@ export async function GET(req: Request) {
     }
   })
 
-  // 選択エリアで絞った、媒体別ファネル
   const inflowMap: Record<string, Funnel> = {}
   for (const r of records) {
     const pref = extractPref(r.company?.address ?? null)

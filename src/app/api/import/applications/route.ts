@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canImportData } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -31,10 +32,8 @@ export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
-  if (!isAdmin) {
-    return NextResponse.json({ error: "取り込みは管理者のみ可能です" }, { status: 403 })
+  if (!canImportData(session)) {
+    return NextResponse.json({ error: "データ取り込みの権限がありません" }, { status: 403 })
   }
 
   const { rows } = await req.json()
@@ -56,7 +55,7 @@ export async function POST(req: Request) {
     companyRef: string | null
   }
   const parsed: Parsed[] = []
-  const monthsInCsv = new Set<string>()   // "2026-7" 形式
+  const monthsInCsv = new Set<string>()
   const results = { success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0 }
 
   for (const row of rows) {
@@ -75,7 +74,6 @@ export async function POST(req: Request) {
   }
 
   // --- 洗い替え：CSVに含まれる年月の既存データを削除 ---
-  // これにより何度インポートしても重複しない
   for (const ym of monthsInCsv) {
     const [y, m] = ym.split("-").map(Number)
     await prisma.applicationRecord.deleteMany({ where: { year: y, month: m } })
