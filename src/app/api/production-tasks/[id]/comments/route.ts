@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
 import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
+import { canViewProduction } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -9,6 +10,10 @@ const prisma = new PrismaClient()
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "制作案件の閲覧権限がありません" }, { status: 403 })
+  }
 
   const { id } = await params
 
@@ -25,6 +30,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "制作案件にコメントする権限がありません" }, { status: 403 })
+  }
 
   const { id } = await params
   const body = await req.json()

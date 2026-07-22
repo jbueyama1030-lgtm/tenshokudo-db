@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
 import { notifyChatwork, APP_URL, buildMentions, getProductionMembers } from "@/lib/chatwork"
+import { canViewProduction, canCreateTask } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -12,6 +13,10 @@ const PRIORITY_LABELS: Record<string, string> = { high: "高", medium: "中", lo
 export async function GET(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "制作案件の閲覧権限がありません" }, { status: 403 })
+  }
 
   const { searchParams } = new URL(req.url)
   const companyId = searchParams.get("companyId")
@@ -34,6 +39,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canCreateTask(session)) {
+    return NextResponse.json({ error: "制作依頼を起票する権限がありません" }, { status: 403 })
+  }
 
   const body = await req.json()
 

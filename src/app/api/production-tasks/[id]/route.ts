@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
 import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
+import { canViewProduction, isAdmin, isProduction, isSales } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -19,6 +20,10 @@ const STATUS_LABELS: Record<string, string> = {
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "制作案件の閲覧権限がありません" }, { status: 403 })
+  }
 
   const { id } = await params
   const task = await prisma.productionTask.findUnique({
@@ -50,22 +55,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const existing = await prisma.productionTask.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
-  const isProduction = role === "production"
-  const isSales = role === "sales"
+  const admin = isAdmin(session)
+  const production = isProduction(session)
+  const sales = isSales(session)
   const isRequester = existing.requesterId === session.user.id
 
-  const canEdit = isAdmin || isProduction || (isSales && isRequester)
+  // 編集できるのは 管理者 / 制作 / 依頼営業本人
+  const canEdit = admin || production || (sales && isRequester)
   if (!canEdit) {
     return NextResponse.json({ error: "この案件を編集する権限がありません" }, { status: 403 })
   }
 
-  if (body.status === "completed" && !isAdmin && !isRequester) {
+  if (body.status === "completed" && !admin && !isRequester) {
     return NextResponse.json({ error: "案件を完了にできるのは依頼営業と管理者のみです" }, { status: 403 })
   }
 
-  if (body.assigneeId !== undefined && !isAdmin && !isProduction) {
+  if (body.assigneeId !== undefined && !admin && !production) {
     return NextResponse.json({ error: "制作担当を変更できるのは制作担当者と管理者のみです" }, { status: 403 })
   }
 
@@ -180,10 +185,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const existing = await prisma.productionTask.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  const role = session.user.role
-  const isAdmin = role !== "sales" && role !== "production"
+  const admin = isAdmin(session)
   const isRequester = existing.requesterId === session.user.id
-  if (!isAdmin && !isRequester) {
+  if (!admin && !isRequester) {
     return NextResponse.json({ error: "この案件を削除する権限がありません" }, { status: 403 })
   }
 
