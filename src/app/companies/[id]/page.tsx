@@ -2,6 +2,15 @@
 import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import {
+  getRoles,
+  canEditCompanyFull,
+  canEditReferralOnly,
+  canDeleteCompany,
+  canCreateTask,
+  isProduction,
+  REFERRAL_FIELDS,
+} from "@/lib/permissions"
 
 type CompetitorMedia = { name: string; monthly: number | null; costPerHire: number | null; note: string }
 type Option = { name: string; amount: number }
@@ -319,11 +328,12 @@ export default function CompanyDetailPage() {
   const router = useRouter()
   const [company, setCompany] = useState<Company | null>(null)
   const [users, setUsers] = useState<User[]>([])
-  const [editing, setEditing] = useState(false)
+  // editMode: none=閲覧 / full=全項目編集 / referral=人材紹介項目のみ編集
+  const [editMode, setEditMode] = useState<"none" | "full" | "referral">("none")
   const [form, setForm] = useState<Partial<Company>>({})
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState("")
-  const [sessionUser, setSessionUser] = useState<{ id: string; role: string } | null>(null)
+  const [session, setSession] = useState<{ user?: { id?: string; role?: string; roles?: string[] } } | null>(null)
   const [tasks, setTasks] = useState<ProductionTask[]>([])
   const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
   const [taskLoading, setTaskLoading] = useState(false)
@@ -349,7 +359,7 @@ export default function CompanyDetailPage() {
     fetch("/api/users").then(r => r.json()).then(setUsers)
     fetch("/api/auth/session").then(r => r.json()).then(s => {
       setUserName(s?.user?.name ?? "")
-      setSessionUser({ id: s?.user?.id ?? "", role: s?.user?.role ?? "" })
+      setSession(s ?? null)
     })
     loadTasks()
   }, [id])
@@ -376,19 +386,56 @@ export default function CompanyDetailPage() {
     setTaskLoading(false)
   }
 
+  // 保存：referral モードのときは紹介項目だけを送る（API側も同じ範囲で弾いている）
   const handleSave = async () => {
     setLoading(true)
+    let payload: Record<string, unknown>
+    if (editMode === "referral") {
+      const formRec = form as unknown as Record<string, unknown>
+      payload = {}
+      REFERRAL_FIELDS.forEach(key => {
+        if (key in formRec) payload[key] = formRec[key]
+      })
+    } else {
+      payload = form as unknown as Record<string, unknown>
+    }
     const res = await fetch("/api/companies/" + id, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     })
     if (res.ok) {
       const updated = await res.json()
       setCompany(updated)
-      setEditing(false)
+      setForm({
+        ...updated,
+        competitorMedia: updated.competitorMedia ?? [],
+        options: updated.options ?? [],
+        apps: updated.apps ?? [],
+        shifts: updated.shifts ?? [],
+        driverSales: updated.driverSales ?? { monthlyRevenue: undefined, annualRevenue: undefined, shifts: {} },
+        referralFees: updated.referralFees ?? [],
+      })
+      setEditMode("none")
+    } else {
+      alert("保存に失敗しました。権限を確認してください。")
     }
     setLoading(false)
+  }
+
+  const handleCancel = () => {
+    setEditMode("none")
+    if (company) {
+      setForm({
+        ...company,
+        competitorMedia: company.competitorMedia ?? [],
+        options: company.options ?? [],
+        apps: company.apps ?? [],
+        shifts: company.shifts ?? [],
+        driverSales: company.driverSales ?? { monthlyRevenue: undefined, annualRevenue: undefined, shifts: {} },
+        referralFees: company.referralFees ?? [],
+      })
+    }
   }
 
   const handleDelete = async () => {
@@ -444,11 +491,21 @@ export default function CompanyDetailPage() {
   const totalRevenue = annualBase - discountAmt + optionTotal
   const renewalDays = daysUntil(company.contractRenewal)
 
-  const canInlineEdit =
-    !editing &&
-    sessionUser != null &&
-    sessionUser.role !== "production" &&
-    (sessionUser.role !== "sales" || company.userId === sessionUser.id)
+  // ===== 権限判定（roles ベース） =====
+  const roles = getRoles(session)
+  const canFull = canEditCompanyFull(session, company.userId)
+  const canReferral = canEditReferralOnly(session, company.userId)
+  const canDelete = canDeleteCompany(session, company.userId)
+  const canTask = canCreateTask(session)
+  const productionOnly = isProduction(session) && !canFull && !canReferral
+
+  // 全項目編集モード中だけ true。referral モードでは通常フィールドは閲覧のまま
+  const editing = editMode === "full"
+  // 人材紹介セクションの入力可否（full でも referral でも入力できる）
+  const editingReferral = editMode === "full" || editMode === "referral"
+
+  // インライン編集は全項目編集権限がある人だけ
+  const canInlineEdit = editMode === "none" && canFull
 
   const setDriverSales = (key: string, val: unknown) => {
     const current = (form.driverSales as DriverSales) ?? {}
@@ -483,22 +540,33 @@ export default function CompanyDetailPage() {
             {company.hasReferralContract && <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-medium">🤝 紹介契約あり</span>}
           </div>
 
-          <div className="flex gap-2 mb-6">
-            {editing ? (
+          <div className="flex gap-2 mb-6 items-center">
+            {editMode !== "none" ? (
               <>
                 <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
-                <button onClick={() => { setEditing(false); setForm({ ...company, competitorMedia: company.competitorMedia ?? [], options: company.options ?? [], referralFees: company.referralFees ?? [] }) }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
-              </>
-            ) : sessionUser?.role === "production" ? (
-              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（制作）</span>
-            ) : sessionUser?.role !== "sales" || company.userId === sessionUser?.id ? (
-              <>
-                <button onClick={() => setEditing(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 全項目を編集</button>
-                <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
-                {inlineSavedMsg && <span className="text-xs text-green-600 self-center ml-1">✓ 保存しました</span>}
+                <button onClick={handleCancel} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+                {editMode === "referral" && (
+                  <span className="text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">🤝 人材紹介の項目のみ編集できます</span>
+                )}
               </>
             ) : (
-              <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">👁 閲覧のみ（担当外）</span>
+              <>
+                {canFull && (
+                  <button onClick={() => setEditMode("full")} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 全項目を編集</button>
+                )}
+                {canReferral && (
+                  <button onClick={() => setEditMode("referral")} className={"px-4 py-2 rounded-lg text-sm font-medium " + (canFull ? "border border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 text-white hover:bg-emerald-700")}>🤝 紹介情報を編集</button>
+                )}
+                {canDelete && (
+                  <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
+                )}
+                {!canFull && !canReferral && (
+                  <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">
+                    {productionOnly ? "👁 閲覧のみ（制作）" : "👁 閲覧のみ"}
+                  </span>
+                )}
+                {inlineSavedMsg && <span className="text-xs text-green-600 self-center ml-1">✓ 保存しました</span>}
+              </>
             )}
           </div>
 
@@ -904,7 +972,7 @@ export default function CompanyDetailPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">商談情報</h2>
-              {canInlineEdit && !editing && (
+              {canInlineEdit && (
                 <span className="text-xs text-gray-400">クリックしてその場で編集できます</span>
               )}
             </div>
@@ -1015,10 +1083,10 @@ export default function CompanyDetailPage() {
           </div>
 
           {/* 人材紹介（キャリアアドバイザー向け） */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className={"bg-white rounded-xl border p-5 mb-4 " + (editMode === "referral" ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200")}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">🤝 人材紹介</h2>
-              {editing ? (
+              {editingReferral ? (
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1038,12 +1106,12 @@ export default function CompanyDetailPage() {
             {/* 紹介単価 */}
             <div className="mb-5">
               <div className="text-xs text-gray-400 mb-2">紹介単価</div>
-              {!editing && (company.referralFees ?? []).length === 0 && (
+              {!editingReferral && (company.referralFees ?? []).length === 0 && (
                 <p className="text-sm text-gray-400">未登録</p>
               )}
-              {(editing ? form.referralFees ?? [] : company.referralFees ?? []).map((fee, i) => (
+              {(editingReferral ? form.referralFees ?? [] : company.referralFees ?? []).map((fee, i) => (
                 <div key={i} className="flex items-center gap-2 mb-1.5">
-                  {editing ? (
+                  {editingReferral ? (
                     <>
                       <input
                         value={fee.condition}
@@ -1068,7 +1136,7 @@ export default function CompanyDetailPage() {
                   )}
                 </div>
               ))}
-              {editing && (
+              {editingReferral && (
                 <button type="button" onClick={() => set("referralFees", [...(form.referralFees ?? []), { condition: "", amount: null }])} className="text-xs text-blue-600 hover:underline">＋ 単価を追加</button>
               )}
             </div>
@@ -1079,7 +1147,7 @@ export default function CompanyDetailPage() {
               <div className="grid grid-cols-3 gap-4">
                 {COND2_ENV.map(item => (
                   <Field key={item.key} label={item.label}>
-                    {editing ? (
+                    {editingReferral ? (
                       <select
                         value={formVal[item.key] === true ? "true" : formVal[item.key] === false ? "false" : ""}
                         onChange={e => set(item.key, e.target.value === "" ? null : e.target.value === "true")}
@@ -1107,7 +1175,7 @@ export default function CompanyDetailPage() {
               <div className="grid grid-cols-4 gap-4">
                 {COND3_ACCEPT.map(item => (
                   <Field key={item.key} label={item.label}>
-                    {editing ? (
+                    {editingReferral ? (
                       <select
                         value={(formVal[item.key] as string) ?? ""}
                         onChange={e => set(item.key, e.target.value)}
@@ -1134,7 +1202,7 @@ export default function CompanyDetailPage() {
               <div className="grid grid-cols-5 gap-4">
                 {COND2_STANDARD.map(item => (
                   <Field key={item.key} label={item.label}>
-                    {editing ? (
+                    {editingReferral ? (
                       <select
                         value={formVal[item.key] === true ? "true" : formVal[item.key] === false ? "false" : ""}
                         onChange={e => set(item.key, e.target.value === "" ? null : e.target.value === "true")}
@@ -1155,7 +1223,7 @@ export default function CompanyDetailPage() {
                 ))}
                 {CONDTEXT_SHORT.map(item => (
                   <Field key={item.key} label={item.label}>
-                    {editing ? (
+                    {editingReferral ? (
                       <input
                         value={(formVal[item.key] as string) ?? ""}
                         onChange={e => set(item.key, e.target.value)}
@@ -1176,7 +1244,7 @@ export default function CompanyDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 {CONDTEXT_LONG.map(item => (
                   <Field key={item.key} label={item.label}>
-                    {editing ? (
+                    {editingReferral ? (
                       <textarea
                         value={(formVal[item.key] as string) ?? ""}
                         onChange={e => set(item.key, e.target.value)}
@@ -1204,42 +1272,44 @@ export default function CompanyDetailPage() {
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">🎨 制作案件</h2>
 
-            <div className="bg-gray-50 rounded-lg p-4 mb-5">
-              <div className="text-xs font-medium text-gray-600 mb-3">制作依頼を起票</div>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1">案件名 <span className="text-red-400">*</span></label>
-                  <input value={taskForm.name} onChange={e => setTaskForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 求人LP新規制作" />
+            {canTask && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-5">
+                <div className="text-xs font-medium text-gray-600 mb-3">制作依頼を起票</div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">案件名 <span className="text-red-400">*</span></label>
+                    <input value={taskForm.name} onChange={e => setTaskForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 求人LP新規制作" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">種別</label>
+                    <select value={taskForm.type} onChange={e => setTaskForm(f => ({ ...f, type: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                      <option value="new">新規</option>
+                      <option value="revise">修正</option>
+                      <option value="renewal">リニューアル</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">優先度</label>
+                    <select value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                      <option value="high">高</option>
+                      <option value="medium">中</option>
+                      <option value="low">低</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">納期</label>
+                    <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">メモ・依頼内容</label>
+                    <textarea value={taskForm.memo} onChange={e => setTaskForm(f => ({ ...f, memo: e.target.value }))} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="制作担当への依頼内容・参考情報など" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">種別</label>
-                  <select value={taskForm.type} onChange={e => setTaskForm(f => ({ ...f, type: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
-                    <option value="new">新規</option>
-                    <option value="revise">修正</option>
-                    <option value="renewal">リニューアル</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">優先度</label>
-                  <select value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
-                    <option value="high">高</option>
-                    <option value="medium">中</option>
-                    <option value="low">低</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">納期</label>
-                  <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1">メモ・依頼内容</label>
-                  <textarea value={taskForm.memo} onChange={e => setTaskForm(f => ({ ...f, memo: e.target.value }))} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="制作担当への依頼内容・参考情報など" />
-                </div>
+                <button onClick={handleCreateTask} disabled={taskLoading || !taskForm.name.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {taskLoading ? "起票中..." : "＋ 制作依頼を起票"}
+                </button>
               </div>
-              <button onClick={handleCreateTask} disabled={taskLoading || !taskForm.name.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                {taskLoading ? "起票中..." : "＋ 制作依頼を起票"}
-              </button>
-            </div>
+            )}
 
             <div className="text-xs font-medium text-gray-600 mb-2">この企業の案件一覧（{tasks.length}件）</div>
             {tasks.length === 0 ? (
