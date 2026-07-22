@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
+import { canEditCompanyFull, canEditReferralOnly, canDeleteCompany, REFERRAL_FIELDS } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -33,98 +34,107 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const existing = await prisma.company.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // salesロールは自分担当のみ編集可
-  if (session.user.role === "sales" && existing.userId !== session.user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const canFull = canEditCompanyFull(session, existing.userId)
+  const canReferral = canEditReferralOnly(session, existing.userId)
+
+  if (!canFull && !canReferral) {
+    return NextResponse.json({ error: "この企業を編集する権限がありません" }, { status: 403 })
   }
-  // 制作ロールは企業データを編集不可（閲覧のみ）
-  if (session.user.role === "production") {
-    return NextResponse.json({ error: "制作ロールは企業データを編集できません" }, { status: 403 })
+
+  // advisor（紹介項目のみ編集可）の場合、送られてきたキーを紹介系だけに絞る
+  // 画面側で隠していても直接APIを叩かれる可能性があるため、サーバー側で必ず制限する
+  let payload = body
+  if (!canFull && canReferral) {
+    const filtered: Record<string, unknown> = {}
+    for (const key of REFERRAL_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        filtered[key] = body[key]
+      }
+    }
+    payload = filtered
   }
 
   // 送られてきたキーだけ更新する（部分更新対応）
   const data: Record<string, unknown> = {}
-
-  const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key)
+  const has = (key: string) => Object.prototype.hasOwnProperty.call(payload, key)
 
   // 文字列系（空文字は null に）
-  if (has("name")) data.name = body.name
-  if (has("companyId")) data.companyId = body.companyId || null
-  if (has("status")) data.status = body.status
-  if (has("media")) data.media = body.media || null
-  if (has("phone")) data.phone = body.phone || null
-  if (has("contactPerson")) data.contactPerson = body.contactPerson || null
-  if (has("contactPosition")) data.contactPosition = body.contactPosition || null
-  if (has("address")) data.address = body.address || null
-  if (has("memo")) data.memo = body.memo || null
-  if (has("adoptionChallenge")) data.adoptionChallenge = body.adoptionChallenge || null
-  if (has("dispatchRatio")) data.dispatchRatio = body.dispatchRatio || null
-  if (has("planName")) data.planName = body.planName || null
-  if (has("discountNote")) data.discountNote = body.discountNote || null
-  if (has("contractNote")) data.contractNote = body.contractNote || null
-  if (has("websiteUrl")) data.websiteUrl = body.websiteUrl || null
-  if (has("temperature")) data.temperature = body.temperature || null
-  if (has("negotiationMemo")) data.negotiationMemo = body.negotiationMemo || null
-  if (has("nextAction")) data.nextAction = body.nextAction || null
+  if (has("name")) data.name = payload.name
+  if (has("companyId")) data.companyId = payload.companyId || null
+  if (has("status")) data.status = payload.status
+  if (has("media")) data.media = payload.media || null
+  if (has("phone")) data.phone = payload.phone || null
+  if (has("contactPerson")) data.contactPerson = payload.contactPerson || null
+  if (has("contactPosition")) data.contactPosition = payload.contactPosition || null
+  if (has("address")) data.address = payload.address || null
+  if (has("memo")) data.memo = payload.memo || null
+  if (has("adoptionChallenge")) data.adoptionChallenge = payload.adoptionChallenge || null
+  if (has("dispatchRatio")) data.dispatchRatio = payload.dispatchRatio || null
+  if (has("planName")) data.planName = payload.planName || null
+  if (has("discountNote")) data.discountNote = payload.discountNote || null
+  if (has("contractNote")) data.contractNote = payload.contractNote || null
+  if (has("websiteUrl")) data.websiteUrl = payload.websiteUrl || null
+  if (has("temperature")) data.temperature = payload.temperature || null
+  if (has("negotiationMemo")) data.negotiationMemo = payload.negotiationMemo || null
+  if (has("nextAction")) data.nextAction = payload.nextAction || null
 
-  // 担当者（salesは変更不可）
-  if (has("userId") && session.user.role !== "sales") data.userId = body.userId
+  // 担当者（全項目編集できる人のみ、かつ営業は変更不可）
+  if (has("userId") && canFull && !session.user.roles?.includes("sales")) {
+    data.userId = payload.userId
+  }
 
   // 数値系
-  if (has("applyCount")) data.applyCount = body.applyCount ?? 0
-  if (has("hireCount")) data.hireCount = body.hireCount ?? 0
-  if (has("vehicleCount")) data.vehicleCount = body.vehicleCount != null ? Number(body.vehicleCount) : null
-  if (has("driverCount")) data.driverCount = body.driverCount != null ? Number(body.driverCount) : null
-  if (has("annualHiringTarget")) data.annualHiringTarget = body.annualHiringTarget != null ? Number(body.annualHiringTarget) : null
-  if (has("tenshokudoCostPerHire")) data.tenshokudoCostPerHire = body.tenshokudoCostPerHire != null ? Number(body.tenshokudoCostPerHire) : null
-  if (has("monthlyFee")) data.monthlyFee = body.monthlyFee != null ? Number(body.monthlyFee) : null
-  if (has("discountRate")) data.discountRate = body.discountRate != null ? Number(body.discountRate) : null
-  if (has("workplaceCertLevel")) data.workplaceCertLevel = body.workplaceCertLevel != null ? Number(body.workplaceCertLevel) : 0
+  if (has("applyCount")) data.applyCount = payload.applyCount ?? 0
+  if (has("hireCount")) data.hireCount = payload.hireCount ?? 0
+  if (has("vehicleCount")) data.vehicleCount = payload.vehicleCount != null ? Number(payload.vehicleCount) : null
+  if (has("driverCount")) data.driverCount = payload.driverCount != null ? Number(payload.driverCount) : null
+  if (has("annualHiringTarget")) data.annualHiringTarget = payload.annualHiringTarget != null ? Number(payload.annualHiringTarget) : null
+  if (has("tenshokudoCostPerHire")) data.tenshokudoCostPerHire = payload.tenshokudoCostPerHire != null ? Number(payload.tenshokudoCostPerHire) : null
+  if (has("monthlyFee")) data.monthlyFee = payload.monthlyFee != null ? Number(payload.monthlyFee) : null
+  if (has("discountRate")) data.discountRate = payload.discountRate != null ? Number(payload.discountRate) : null
+  if (has("workplaceCertLevel")) data.workplaceCertLevel = payload.workplaceCertLevel != null ? Number(payload.workplaceCertLevel) : 0
 
   // 配列系
-  if (has("persona")) data.persona = body.persona ?? []
-  if (has("apps")) data.apps = body.apps ?? []
-  if (has("shifts")) data.shifts = body.shifts ?? []
-  if (has("competitorMedia")) data.competitorMedia = body.competitorMedia ?? []
-  if (has("options")) data.options = body.options ?? []
+  if (has("persona")) data.persona = payload.persona ?? []
+  if (has("apps")) data.apps = payload.apps ?? []
+  if (has("shifts")) data.shifts = payload.shifts ?? []
+  if (has("competitorMedia")) data.competitorMedia = payload.competitorMedia ?? []
+  if (has("options")) data.options = payload.options ?? []
 
   // 日付系
-  if (has("nextActionDate")) data.nextActionDate = body.nextActionDate ? new Date(body.nextActionDate) : null
-  if (has("contractStart")) data.contractStart = body.contractStart ? new Date(body.contractStart) : null
-  if (has("contractRenewal")) data.contractRenewal = body.contractRenewal ? new Date(body.contractRenewal) : null
+  if (has("nextActionDate")) data.nextActionDate = payload.nextActionDate ? new Date(payload.nextActionDate) : null
+  if (has("contractStart")) data.contractStart = payload.contractStart ? new Date(payload.contractStart) : null
+  if (has("contractRenewal")) data.contractRenewal = payload.contractRenewal ? new Date(payload.contractRenewal) : null
 
   // JSON系
-  if (has("driverSales")) data.driverSales = body.driverSales ?? null
+  if (has("driverSales")) data.driverSales = payload.driverSales ?? null
 
   // ===== 人材紹介（キャリアアドバイザー向け） =====
-  if (has("hasReferralContract")) data.hasReferralContract = Boolean(body.hasReferralContract)
-  if (has("referralFees")) data.referralFees = body.referralFees ?? []
+  if (has("hasReferralContract")) data.hasReferralContract = Boolean(payload.hasReferralContract)
+  if (has("referralFees")) data.referralFees = payload.referralFees ?? []
 
-  // 受け入れ条件（3択: "ok" / "ng" / "consult" / null）
   const CONDITION_3 = [
     "condWorkSide", "condFemale", "condLgbtq", "condForeign",
     "condSpecialTrain", "condAge64", "condTattoo", "condAccident",
   ]
   for (const key of CONDITION_3) {
-    if (has(key)) data[key] = body[key] || null
+    if (has(key)) data[key] = payload[key] || null
   }
 
-  // 受け入れ条件（2択: true / false / null）
   const CONDITION_2 = [
     "condDorm", "condHousingSupport", "condFemaleFacility",
     "condJobChangeLimit", "condGuarantor",
   ]
   for (const key of CONDITION_2) {
-    if (has(key)) data[key] = body[key] === null || body[key] === "" ? null : Boolean(body[key])
+    if (has(key)) data[key] = payload[key] === null || payload[key] === "" ? null : Boolean(payload[key])
   }
 
-  // 受け入れ条件（自由記入）
   const CONDITION_TEXT = [
     "condAgeRange", "condRetirementAge", "condIdealPerson",
     "condHiringStandard", "condAppearance", "condMedicalHistory", "condNote",
   ]
   for (const key of CONDITION_TEXT) {
-    if (has(key)) data[key] = body[key] || null
+    if (has(key)) data[key] = payload[key] || null
   }
 
   const company = await prisma.company.update({
@@ -145,13 +155,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const existing = await prisma.company.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  // salesロールは自分担当のみ削除可
-  if (session.user.role === "sales" && existing.userId !== session.user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-  // 制作ロールは企業を削除不可
-  if (session.user.role === "production") {
-    return NextResponse.json({ error: "制作ロールは企業を削除できません" }, { status: 403 })
+  if (!canDeleteCompany(session, existing.userId)) {
+    return NextResponse.json({ error: "この企業を削除する権限がありません" }, { status: 403 })
   }
 
   await prisma.company.delete({ where: { id } })
