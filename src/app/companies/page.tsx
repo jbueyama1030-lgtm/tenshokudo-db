@@ -44,11 +44,21 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const searchQuery = params.q ?? ""
   const selectedTemp = params.temp ?? "all"
 
-  const users = await prisma.user.findMany({
-  where: { role: { in: ["sales", "admin"] } },
-  select: { id: true, name: true },
-  orderBy: { name: "asc" },
+  // 担当者タブ用ユーザー: roles に sales または admin を持つ人だけ。
+  // advisor（キャリアアドバイザー）は企業担当を持たないのでタブから除外する。
+  const candidateUsers = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      roles: { hasSome: ["sales", "admin"] },
+    },
+    select: { id: true, name: true, roles: true },
+    orderBy: { name: "asc" },
   })
+
+  // advisor のみ（sales/admin を持たない）を弾いた上で、roles を落とす
+  const users = candidateUsers
+    .filter((u) => u.roles.some((r) => r === "sales" || r === "admin"))
+    .map((u) => ({ id: u.id, name: u.name }))
 
   const companies = await prisma.company.findMany({
     where: {
