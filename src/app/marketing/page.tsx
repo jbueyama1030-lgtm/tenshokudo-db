@@ -15,21 +15,21 @@ type InflowRow = Funnel & {
   cpaApply: number | null
   cpaHire: number | null
 }
+type OverheadItem = { name: string; amount: number }
 type MarketingData = {
   availableMonths: { year: number; month: number }[]
   target: { year: number; month: number } | null
   overall: Funnel
   byInflow: InflowRow[]
   overallAdCost: number
+  directAdCost: number
+  overheadAdCost: number
+  overheadItems: OverheadItem[]
 }
 
 function rate(num: number, den: number): string {
   if (den === 0) return "-"
   return ((num / den) * 100).toFixed(1) + "%"
-}
-function fmt(n: number | null | undefined) {
-  if (n == null) return "-"
-  return Number(n).toLocaleString("ja-JP")
 }
 function yen(n: number | null | undefined) {
   if (n == null) return "-"
@@ -41,6 +41,7 @@ export default function MarketingPage() {
   const [data, setData] = useState<MarketingData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [showOverhead, setShowOverhead] = useState(false)
 
   const load = async (year?: number, month?: number) => {
     setLoading(true)
@@ -63,6 +64,7 @@ export default function MarketingPage() {
   }, [])
 
   const o = data?.overall
+  // 全体CPAは配賦対象外も含めた総額で算出する
   const overallCpaHire = data && o && o.hired > 0 ? Math.round(data.overallAdCost / o.hired) : null
   const overallCpaApply = data && o && o.apply > 0 ? Math.round(data.overallAdCost / o.apply) : null
 
@@ -139,20 +141,55 @@ export default function MarketingPage() {
               </div>
 
               {/* 全体KPI（下段：費用） */}
-              <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="grid grid-cols-4 gap-3 mb-2">
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">総広告費（入力済み媒体の合計）</div>
+                  <div className="text-xs text-gray-400 mb-1">全体広告費</div>
                   <div className="text-2xl font-bold text-gray-900">{yen(data.overallAdCost)}</div>
+                  <div className="text-xs text-gray-400 mt-1">媒体直課 {yen(data.directAdCost)}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-orange-200 p-4">
+                  <div className="text-xs text-gray-400 mb-1">その他広告費（配賦対象外）</div>
+                  <div className="text-2xl font-bold text-orange-600">{yen(data.overheadAdCost)}</div>
+                  {data.overheadItems.length > 0 && (
+                    <button
+                      onClick={() => setShowOverhead(v => !v)}
+                      className="text-xs text-orange-600 hover:underline mt-1"
+                    >
+                      {showOverhead ? "内訳を隠す" : "内訳を見る（" + data.overheadItems.length + "件）"}
+                    </button>
+                  )}
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="text-xs text-gray-400 mb-1">全体 応募CPA</div>
                   <div className="text-2xl font-bold text-blue-700">{yen(overallCpaApply)}</div>
+                  <div className="text-xs text-gray-400 mt-1">全体広告費ベース</div>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="text-xs text-gray-400 mb-1">全体 入社CPA</div>
                   <div className="text-2xl font-bold text-green-700">{yen(overallCpaHire)}</div>
+                  <div className="text-xs text-gray-400 mt-1">全体広告費ベース</div>
                 </div>
               </div>
+
+              {/* その他広告費の内訳 */}
+              {showOverhead && data.overheadItems.length > 0 && (
+                <div className="bg-orange-50 rounded-xl border border-orange-200 p-4 mb-6">
+                  <div className="text-xs font-medium text-orange-800 mb-2">その他広告費の内訳</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {data.overheadItems.map(item => (
+                      <div key={item.name} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
+                        <span className="text-xs text-gray-600">{item.name}</span>
+                        <span className="text-sm font-medium text-gray-900">{yen(item.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-orange-700 mt-2">
+                    これらは特定の流入元に紐づかないため、下の流入元別テーブルには含まれません。
+                  </p>
+                </div>
+              )}
+
+              {!showOverhead && <div className="mb-6" />}
 
               {/* 流入元別テーブル */}
               <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -192,21 +229,25 @@ export default function MarketingPage() {
                     </tbody>
                     <tfoot className="bg-gray-50 border-t border-gray-200">
                       <tr>
-                        <td className="px-3 py-2 text-xs font-medium text-gray-500">合計</td>
+                        <td className="px-3 py-2 text-xs font-medium text-gray-500">媒体直課 合計</td>
                         <td className="px-3 py-2 text-right font-bold text-gray-900">{o?.apply ?? 0}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-700">{o?.contact ?? 0}</td>
                         <td className="px-3 py-2 text-right font-bold text-purple-700">{o?.interviewDone ?? 0}</td>
                         <td className="px-3 py-2 text-right font-bold text-green-700">{o?.hired ?? 0}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{rate(o?.hired ?? 0, o?.apply ?? 0)}</td>
-                        <td className="px-3 py-2 text-right font-bold text-gray-900">{yen(data.overallAdCost)}</td>
-                        <td className="px-3 py-2 text-right text-blue-700">{yen(overallCpaApply)}</td>
-                        <td className="px-3 py-2 text-right font-bold text-green-700 bg-green-50">{yen(overallCpaHire)}</td>
+                        <td className="px-3 py-2 text-right font-bold text-gray-900">{yen(data.directAdCost)}</td>
+                        <td className="px-3 py-2 text-right text-blue-700">
+                          {o && o.apply > 0 && data.directAdCost > 0 ? yen(Math.round(data.directAdCost / o.apply)) : "-"}
+                        </td>
+                        <td className="px-3 py-2 text-right font-bold text-green-700 bg-green-50">
+                          {o && o.hired > 0 && data.directAdCost > 0 ? yen(Math.round(data.directAdCost / o.hired)) : "-"}
+                        </td>
                       </tr>
                     </tfoot>
                   </table>
                 </div>
                 <p className="text-xs text-gray-400 mt-3">
-                  ※ 面接設定・面接実施の詳細な内訳は各流入元の応募・入社をもとに算出しています。広告費は当月に入力された媒体のみ反映されます。
+                  ※ この表の広告費は媒体直課分のみです。配賦対象外の費用（{yen(data.overheadAdCost)}）は含まれません。上部の「全体 応募CPA／入社CPA」は配賦対象外も含めた全体広告費で算出しています。
                 </p>
               </div>
             </>

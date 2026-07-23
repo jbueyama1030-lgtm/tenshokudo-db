@@ -67,6 +67,9 @@ export async function GET(req: Request) {
       overall: emptyFunnel(),
       byInflow: [],
       overallAdCost: 0,
+      directAdCost: 0,
+      overheadAdCost: 0,
+      overheadItems: [],
     })
   }
 
@@ -85,24 +88,38 @@ export async function GET(req: Request) {
     addToFunnel(inflowMap[r.inflow], r.status)
   }
 
-  // 広告費（その月）
+  // 広告費（その月の明細をすべて取得）
   const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
-  const adCostByInflow: Record<string, { costType: string; unitPrice: number | null; totalCost: number | null }> = {}
-  adCosts.forEach(a => {
-    adCostByInflow[a.inflow] = { costType: a.costType, unitPrice: a.unitPrice, totalCost: a.totalCost }
-  })
 
-  const adCostOf = (inflow: string, apply: number): number | null => {
-    const ac = adCostByInflow[inflow]
-    if (!ac) return null
-    if (ac.costType === "operation") return ac.totalCost
-    if (ac.costType === "performance" && ac.unitPrice != null) return ac.unitPrice * apply
-    return null
+  // 明細1件の金額を算出（成果報酬型は その流入の応募数 × 単価）
+  const amountOf = (a: typeof adCosts[number]): number => {
+    if (a.costType === "operation") return a.totalCost ?? 0
+    if (a.costType === "performance" && a.unitPrice != null) {
+      const applyCount = a.inflow ? (inflowMap[a.inflow]?.apply ?? 0) : 0
+      return a.unitPrice * applyCount
+    }
+    return 0
+  }
+
+  // 流入元ごとに direct 明細を合算
+  const directCostByInflow: Record<string, number> = {}
+  let overheadAdCost = 0
+  const overheadItems: { name: string; amount: number }[] = []
+
+  for (const a of adCosts) {
+    const amount = amountOf(a)
+    if (a.category === "overhead" || !a.inflow) {
+      overheadAdCost += amount
+      overheadItems.push({ name: a.name, amount })
+    } else {
+      directCostByInflow[a.inflow] = (directCostByInflow[a.inflow] ?? 0) + amount
+    }
   }
 
   const byInflow = Object.entries(inflowMap)
     .map(([inflow, f]) => {
-      const adCost = adCostOf(inflow, f.apply)
+      // 明細が1件も無い流入元は「未入力」として null にする
+      const adCost = inflow in directCostByInflow ? directCostByInflow[inflow] : null
       return {
         inflow,
         ...f,
@@ -113,7 +130,10 @@ export async function GET(req: Request) {
     })
     .sort((a, b) => b.apply - a.apply)
 
-  const overallAdCost = byInflow.reduce((s, r) => s + (r.adCost ?? 0), 0)
+  const directAdCost = byInflow.reduce((s, r) => s + (r.adCost ?? 0), 0)
+  const overallAdCost = directAdCost + overheadAdCost
+
+  overheadItems.sort((a, b) => b.amount - a.amount)
 
   return NextResponse.json({
     availableMonths,
@@ -121,5 +141,8 @@ export async function GET(req: Request) {
     overall,
     byInflow,
     overallAdCost,
+    directAdCost,
+    overheadAdCost,
+    overheadItems,
   })
 }

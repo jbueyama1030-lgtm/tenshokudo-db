@@ -95,14 +95,29 @@ export async function GET(req: Request) {
     if (topSet.has(r.inflow)) bump(byMonthInflow[k][r.inflow])
   }
 
+  // 全流入の月別応募数（成果報酬型の金額算出に必要）
+  const applyByMonthInflow: Record<string, number> = {}
+  for (const r of filtered) {
+    const key = monthKey(r.year, r.month) + "|" + r.inflow
+    applyByMonthInflow[key] = (applyByMonthInflow[key] ?? 0) + 1
+  }
+
+  // 広告費：月×流入元で明細を合算（overhead と inflow なしは除外）
   const adCosts = await prisma.adCost.findMany({
     where: { year: { gte: minYear, lte: maxYear } },
   })
-  const adCostMap: Record<string, { costType: string; unitPrice: number | null; totalCost: number | null }> = {}
-  adCosts.forEach(a => {
+  const costByMonthInflow: Record<string, number> = {}
+  for (const a of adCosts) {
+    if (a.category === "overhead" || !a.inflow) continue
     const k = monthKey(a.year, a.month) + "|" + a.inflow
-    adCostMap[k] = { costType: a.costType, unitPrice: a.unitPrice, totalCost: a.totalCost }
-  })
+    let amount = 0
+    if (a.costType === "operation") {
+      amount = a.totalCost ?? 0
+    } else if (a.costType === "performance" && a.unitPrice != null) {
+      amount = a.unitPrice * (applyByMonthInflow[k] ?? 0)
+    }
+    costByMonthInflow[k] = (costByMonthInflow[k] ?? 0) + amount
+  }
 
   const applyTrend = targetMonths.map(t => {
     const k = monthKey(t.year, t.month)
@@ -127,14 +142,9 @@ export async function GET(req: Request) {
     const k = monthKey(t.year, t.month)
     const row: Record<string, string | number | null> = { month: k }
     for (const inf of topInflows) {
-      const ac = adCostMap[k + "|" + inf]
+      const cost = costByMonthInflow[k + "|" + inf]
       const agg = byMonthInflow[k][inf]
-      let cost: number | null = null
-      if (ac) {
-        if (ac.costType === "operation") cost = ac.totalCost
-        else if (ac.costType === "performance" && ac.unitPrice != null) cost = ac.unitPrice * agg.apply
-      }
-      row[inf] = cost != null && agg.hired > 0 ? Math.round(cost / agg.hired) : null
+      row[inf] = cost != null && cost > 0 && agg.hired > 0 ? Math.round(cost / agg.hired) : null
     }
     return row
   })

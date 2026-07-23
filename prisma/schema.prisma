@@ -216,17 +216,28 @@ model ApplicationRecord {
 model AdCost {
   id        String   @id @default(cuid())
 
-  inflow    String
+  // 費用の明細名（例: "プライムサープ(Indeed)", "TELICK", "MATTRZ"）
+  name      String
+
+  // 紐づく流入元。overhead（配賦対象外）の場合は null
+  inflow    String?
+
   year      Int
   month     Int
+
+  // direct = 特定流入に紐づく / overhead = 流入に紐づかない全体費
+  category  String   @default("direct")
 
   costType  String   @default("operation")
   unitPrice Int?
   totalCost Int?
 
+  memo      String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([inflow, year, month], name: "uniqueAdCost")
+  @@unique([name, year, month], name: "uniqueAdCost")
   @@index([year, month])
+  @@index([inflow])
 }

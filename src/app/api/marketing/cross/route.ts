@@ -100,11 +100,12 @@ export async function GET(req: Request) {
 
   const selectedArea = areaParam || (areas.length > 0 ? areas[0].area : null)
 
+  // 成果報酬型の単価のみエリア別CPAに使う（運用型は月総額なのでエリア按分できない）
   const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
   const perfUnitPrice: Record<string, number> = {}
   adCosts.forEach(a => {
-    if (a.costType === "performance" && a.unitPrice != null) {
-      perfUnitPrice[a.inflow] = a.unitPrice
+    if (a.category !== "overhead" && a.inflow && a.costType === "performance" && a.unitPrice != null) {
+      perfUnitPrice[a.inflow] = (perfUnitPrice[a.inflow] ?? 0) + a.unitPrice
     }
   })
 

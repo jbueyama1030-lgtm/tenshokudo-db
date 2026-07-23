@@ -1,105 +1,112 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { canViewMarketing } from "@/lib/permissions"
+import { canImportData } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
-// GET: ?year=2026&month=5 → その月の広告費 + 流入元候補 + 応募数
-export async function GET(req: Request) {
+// GET /api/ad-costs?year=2026&month=6
+// その月の広告費明細と、流入元ごとの応募数を返す
+export async function GET(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (!canViewMarketing(session)) {
-    return NextResponse.json({ error: "マーケティング分析の権限がありません" }, { status: 403 })
-  }
+  if (!session) return NextResponse.json({ error: "未認証です" }, { status: 401 })
+  if (!canImportData(session)) return NextResponse.json({ error: "権限がありません" }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
-  const year = Number(searchParams.get("year"))
-  const month = Number(searchParams.get("month"))
+  const yearParam = searchParams.get("year")
+  const monthParam = searchParams.get("month")
 
-  const allMonths = await prisma.applicationRecord.findMany({
-    select: { year: true, month: true },
-    distinct: ["year", "month"],
+  // 応募データが存在する月の一覧（新しい順）
+  const monthGroups = await prisma.applicationRecord.groupBy({
+    by: ["year", "month"],
     orderBy: [{ year: "desc" }, { month: "desc" }],
   })
-  const availableMonths = allMonths.map(m => ({ year: m.year, month: m.month }))
+  const availableMonths = monthGroups.map(g => ({ year: g.year, month: g.month }))
 
-  if (!year || !month) {
-    return NextResponse.json({ availableMonths, target: null, rows: [] })
+  // 対象月の決定：指定がなければ最新月
+  let target: { year: number; month: number } | null = null
+  if (yearParam && monthParam) {
+    target = { year: Number(yearParam), month: Number(monthParam) }
+  } else if (availableMonths.length > 0) {
+    target = availableMonths[0]
   }
 
-  const records = await prisma.applicationRecord.findMany({
-    where: { year, month },
-    select: { inflow: true },
-  })
-  const applyCountByInflow: Record<string, number> = {}
-  for (const r of records) {
-    applyCountByInflow[r.inflow] = (applyCountByInflow[r.inflow] || 0) + 1
+  if (!target) {
+    return NextResponse.json({ availableMonths, target: null, inflows: [], costs: [] })
   }
 
-  const adCosts = await prisma.adCost.findMany({ where: { year, month } })
-  const adCostByInflow: Record<string, typeof adCosts[number]> = {}
-  adCosts.forEach(a => { adCostByInflow[a.inflow] = a })
-
-  const inflowSet = new Set<string>([
-    ...Object.keys(applyCountByInflow),
-    ...adCosts.map(a => a.inflow),
-  ])
-
-  const rows = Array.from(inflowSet).map(inflow => {
-    const ac = adCostByInflow[inflow]
-    return {
-      inflow,
-      applyCount: applyCountByInflow[inflow] ?? 0,
-      costType: ac?.costType ?? "operation",
-      unitPrice: ac?.unitPrice ?? null,
-      totalCost: ac?.totalCost ?? null,
-    }
-  }).sort((a, b) => b.applyCount - a.applyCount)
-
-  return NextResponse.json({
-    availableMonths,
-    target: { year, month },
-    rows,
+  // 対象月の流入元ごと応募数
+  const inflowGroups = await prisma.applicationRecord.groupBy({
+    by: ["inflow"],
+    where: { year: target.year, month: target.month },
+    _count: { _all: true },
   })
+  const inflows = inflowGroups
+    .map(g => ({ inflow: g.inflow, applyCount: g._count._all }))
+    .sort((a, b) => b.applyCount - a.applyCount)
+
+  // 対象月の広告費明細
+  const costs = await prisma.adCost.findMany({
+    where: { year: target.year, month: target.month },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
+  })
+
+  return NextResponse.json({ availableMonths, target, inflows, costs })
 }
 
-// POST: 広告費を保存（1件ずつ upsert）
-export async function POST(req: Request) {
+// POST /api/ad-costs
+// 明細1行の作成・更新（name + year + month が一意キー）
+export async function POST(req: NextRequest) {
   const session = await auth()
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (!canViewMarketing(session)) {
-    return NextResponse.json({ error: "マーケティング分析の権限がありません" }, { status: 403 })
-  }
+  if (!session) return NextResponse.json({ error: "未認証です" }, { status: 401 })
+  if (!canImportData(session)) return NextResponse.json({ error: "権限がありません" }, { status: 403 })
 
   const body = await req.json()
-  const { year, month, inflow, costType } = body
+  const { name, inflow, year, month, category, costType, unitPrice, totalCost, memo } = body
 
-  if (!year || !month || !inflow) {
-    return NextResponse.json({ error: "年月と流入元は必須です" }, { status: 400 })
+  if (!name || !String(name).trim()) {
+    return NextResponse.json({ error: "費用名は必須です" }, { status: 400 })
+  }
+  if (!year || !month) {
+    return NextResponse.json({ error: "年月は必須です" }, { status: 400 })
   }
 
-  const unitPrice = body.unitPrice != null && body.unitPrice !== "" ? Number(body.unitPrice) : null
-  const totalCost = body.totalCost != null && body.totalCost !== "" ? Number(body.totalCost) : null
+  const cat = category === "overhead" ? "overhead" : "direct"
+  // overhead は流入に紐づかないので inflow を強制的に null にする
+  const inflowValue = cat === "overhead" ? null : (inflow || null)
+  const type = costType === "performance" ? "performance" : "operation"
+
+  const data = {
+    name: String(name).trim(),
+    inflow: inflowValue,
+    year: Number(year),
+    month: Number(month),
+    category: cat,
+    costType: type,
+    unitPrice: type === "performance" && unitPrice != null ? Number(unitPrice) : null,
+    totalCost: type === "operation" && totalCost != null ? Number(totalCost) : null,
+    memo: memo ? String(memo) : null,
+  }
 
   const saved = await prisma.adCost.upsert({
-    where: {
-      uniqueAdCost: { inflow, year: Number(year), month: Number(month) },
-    },
-    update: {
-      costType: costType || "operation",
-      unitPrice,
-      totalCost,
-    },
-    create: {
-      inflow,
-      year: Number(year),
-      month: Number(month),
-      costType: costType || "operation",
-      unitPrice,
-      totalCost,
-    },
+    where: { uniqueAdCost: { name: data.name, year: data.year, month: data.month } },
+    update: data,
+    create: data,
   })
 
   return NextResponse.json(saved)
+}
+
+// DELETE /api/ad-costs?id=xxx
+export async function DELETE(req: NextRequest) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "未認証です" }, { status: 401 })
+  if (!canImportData(session)) return NextResponse.json({ error: "権限がありません" }, { status: 403 })
+
+  const { searchParams } = new URL(req.url)
+  const id = searchParams.get("id")
+  if (!id) return NextResponse.json({ error: "idが必要です" }, { status: 400 })
+
+  await prisma.adCost.delete({ where: { id } })
+  return NextResponse.json({ ok: true })
 }

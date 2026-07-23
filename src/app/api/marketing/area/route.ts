@@ -88,11 +88,13 @@ export async function GET(req: Request) {
     },
   })
 
+  // 成果報酬型の単価は流入元ごとに1つの想定。
+  // 同一流入に複数の成果報酬明細がある場合は合算単価として扱う。
   const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
   const perfUnitPrice: Record<string, number> = {}
   adCosts.forEach(a => {
-    if (a.costType === "performance" && a.unitPrice != null) {
-      perfUnitPrice[a.inflow] = a.unitPrice
+    if (a.category !== "overhead" && a.inflow && a.costType === "performance" && a.unitPrice != null) {
+      perfUnitPrice[a.inflow] = (perfUnitPrice[a.inflow] ?? 0) + a.unitPrice
     }
   })
 
