@@ -6,10 +6,7 @@ import { annualRevenue } from "@/lib/revenue"
 
 const prisma = new PrismaClient()
 
-// かけて良い広告費の売上に対する比率（デフォルト30%）
 const DEFAULT_RATE = 30
-
-const CONTRACTED_STATUSES = ["contracted", "referral_only"]
 
 const PREFECTURES = [
   "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
@@ -63,32 +60,41 @@ export async function GET(req: Request) {
     return NextResponse.json({ availableMonths, target: null, rate, byArea: [], overall: null })
   }
 
-  // ===== 1. エリア別「かけて良い広告費」（契約済み企業の月間売上×rate%） =====
-  const contractedCompanies = await prisma.company.findMany({
-    where: { status: { in: CONTRACTED_STATUSES } },
-    select: { address: true, monthlyFee: true, discountRate: true, options: true },
+  // 対象月の初日と末日（この期間に契約がアクティブだったかを判定する）
+  const monthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1))
+  const monthEnd = new Date(Date.UTC(targetYear, targetMonth, 0, 23, 59, 59)) // 翌月0日=当月末日
+
+  // ===== 1. エリア別「かけて良い広告費」 =====
+  // 対象月にアクティブだった契約期間を集める
+  // アクティブ = contractStart <= 月末 かつ (contractEnd が null または contractEnd >= 月初)
+  const activePeriods = await prisma.contractPeriod.findMany({
+    where: {
+      contractStart: { not: null, lte: monthEnd },
+      OR: [
+        { contractEnd: null },
+        { contractEnd: { gte: monthStart } },
+      ],
+    },
+    include: {
+      company: { select: { address: true } },
+    },
   })
 
-  // エリア → 月間売上合計
   const areaMonthlyRevenue: Record<string, number> = {}
   let totalMonthlyRevenue = 0
-  for (const c of contractedCompanies) {
-    const pref = extractPref(c.address)
-    const monthly = Math.round(annualRevenue(c) / 12)
+  for (const p of activePeriods) {
+    const pref = extractPref(p.company?.address ?? null)
+    const monthly = Math.round(annualRevenue(p) / 12)
     areaMonthlyRevenue[pref] = (areaMonthlyRevenue[pref] ?? 0) + monthly
     totalMonthlyRevenue += monthly
   }
 
   // ===== 2. エリア別「実際の広告費（概算）」 =====
-  // direct 広告費を、その媒体の応募がどのエリアに落ちたかの比率で按分する
-
-  // 対象月の応募（流入元とエリアの組）
   const records = await prisma.applicationRecord.findMany({
     where: { year: targetYear, month: targetMonth },
     select: { inflow: true, company: { select: { address: true } } },
   })
 
-  // 流入元ごとの総応募数、および 流入元×エリアの応募数
   const inflowTotalApply: Record<string, number> = {}
   const inflowAreaApply: Record<string, Record<string, number>> = {}
   for (const r of records) {
@@ -98,7 +104,6 @@ export async function GET(req: Request) {
     inflowAreaApply[r.inflow][pref] = (inflowAreaApply[r.inflow][pref] ?? 0) + 1
   }
 
-  // 対象月の direct 広告費（流入元ごとに合算）
   const adCosts = await prisma.adCost.findMany({ where: { year: targetYear, month: targetMonth } })
   const directCostByInflow: Record<string, number> = {}
   let overheadTotal = 0
@@ -113,18 +118,16 @@ export async function GET(req: Request) {
     }
   }
 
-  // 各流入元の広告費を、応募エリア比でエリアに按分
   const areaActualCost: Record<string, number> = {}
   for (const [inflow, cost] of Object.entries(directCostByInflow)) {
     const total = inflowTotalApply[inflow] ?? 0
-    if (total === 0) continue // 応募が無い媒体はエリア按分不能（全体には overhead 的に残す手もあるが概算なので除外）
+    if (total === 0) continue
     const areaApply = inflowAreaApply[inflow] ?? {}
     for (const [pref, count] of Object.entries(areaApply)) {
       areaActualCost[pref] = (areaActualCost[pref] ?? 0) + cost * (count / total)
     }
   }
 
-  // 応募が無くエリア按分できなかった direct 広告費（差額）を集計
   const allocatedDirect = Object.values(areaActualCost).reduce((s, v) => s + v, 0)
   const totalDirect = Object.values(directCostByInflow).reduce((s, v) => s + v, 0)
   const unallocatedDirect = Math.max(0, totalDirect - allocatedDirect)
@@ -142,15 +145,14 @@ export async function GET(req: Request) {
       return {
         area,
         monthlyRevenue: areaMonthlyRevenue[area] ?? 0,
-        budget,               // かけて良い広告費
-        actual,               // 実際の広告費（概算）
-        diff: budget - actual, // プラス=余力 / マイナス=超過
+        budget,
+        actual,
+        diff: budget - actual,
         overRatio: budget > 0 ? Math.round((actual / budget) * 100) : null,
       }
     })
     .sort((a, b) => b.monthlyRevenue - a.monthlyRevenue)
 
-  // ===== 全体 =====
   const totalBudget = Math.round(totalMonthlyRevenue * (rate / 100))
   const totalActual = Math.round(allocatedDirect + unallocatedDirect + overheadTotal)
 
@@ -160,6 +162,7 @@ export async function GET(req: Request) {
     actual: totalActual,
     diff: totalBudget - totalActual,
     overRatio: totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : null,
+    activeContracts: activePeriods.length,
     breakdown: {
       allocatedDirect: Math.round(allocatedDirect),
       unallocatedDirect: Math.round(unallocatedDirect),

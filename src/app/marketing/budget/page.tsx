@@ -16,6 +16,7 @@ type Overall = {
   actual: number
   diff: number
   overRatio: number | null
+  activeContracts: number
   breakdown: {
     allocatedDirect: number
     unallocatedDirect: number
@@ -65,7 +66,6 @@ export default function BudgetPage() {
 
   const o = data?.overall
 
-  // 差分の色（余力=緑 / 超過=赤）
   const diffCls = (diff: number) => diff >= 0 ? "text-green-700" : "text-red-600"
   const ratioCls = (ratio: number | null) => {
     if (ratio == null) return "text-gray-400"
@@ -112,7 +112,7 @@ export default function BudgetPage() {
             </div>
           </div>
           <p className="text-sm text-gray-500 mb-6">
-            契約済み企業（契約中・人材紹介のみ）の月間掲載料売上に対する{data?.rate ?? rate}%を「かけて良い広告費」とし、実際の広告費（媒体費を応募エリア比で按分した概算）と比較します。
+            対象月にアクティブだった契約（契約中・人材紹介のみ）の月間掲載料売上に対する{data?.rate ?? rate}%を「かけて良い広告費」とし、実際の広告費（媒体費を応募エリア比で按分した概算）と比較します。
           </p>
 
           {error && <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-700">{error}</div>}
@@ -130,6 +130,7 @@ export default function BudgetPage() {
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="text-xs text-gray-400 mb-1">契約済み 月間売上</div>
                   <div className="text-xl font-bold text-gray-900">{yen(o.monthlyRevenue)}</div>
+                  <div className="text-xs text-gray-400 mt-1">アクティブ契約 {o.activeContracts}件</div>
                 </div>
                 <div className="bg-blue-50 rounded-xl border border-blue-200 p-4">
                   <div className="text-xs text-blue-500 mb-1">かけて良い広告費（{data.rate}%）</div>
@@ -189,7 +190,7 @@ export default function BudgetPage() {
                           <td className="px-3 py-2 text-right text-blue-700 font-medium">{yen(row.budget)}</td>
                           <td className="px-3 py-2 text-right text-gray-900">{yen(row.actual)}</td>
                           <td className={"px-3 py-2 text-right font-bold " + diffCls(row.diff)}>
-                            {row.diff >= 0 ? "+" : "−"}{yen(Math.abs(row.diff)).replace("¥", "¥")}
+                            {row.diff >= 0 ? "+" : "−"}{yen(Math.abs(row.diff))}
                           </td>
                           <td className="px-3 py-2 text-center">
                             {row.overRatio != null
@@ -212,7 +213,7 @@ export default function BudgetPage() {
                   </table>
                 </div>
                 <p className="text-xs text-gray-400 mt-3">
-                  ※ 実際の広告費（概算）は、各媒体の月額を「その媒体の応募がどのエリアに落ちたか」の比率で按分したものです。运用型広告費をエリアに割り振るための概算であり、実際の請求額をエリア単位で分けたものではありません。
+                  ※ 実際の広告費（概算）は、各媒体の月額を「その媒体の応募がどのエリアに落ちたか」の比率で按分したものです。運用型広告費をエリアに割り振るための概算であり、実際の請求額をエリア単位で分けたものではありません。
                 </p>
               </div>
             </>

@@ -124,6 +124,9 @@ model Company {
   // 応募明細（マーケ分析用）
   applicationRecords ApplicationRecord[]
 
+  // 契約期間（契約中/解約/再契約それぞれ1本）
+  contractPeriods ContractPeriod[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -240,4 +243,35 @@ model AdCost {
   @@unique([name, year, month], name: "uniqueAdCost")
   @@index([year, month])
   @@index([inflow])
+}
+
+model ContractPeriod {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+
+  // この契約期間での転職道側の企業ID（再掲載で変わる）
+  externalId String?
+
+  // contracted / referral_only
+  status String @default("contracted")
+
+  contractStart   DateTime?
+  contractRenewal DateTime?
+  contractEnd     DateTime?   // 解約日（入ると掲載落ち扱い）
+
+  // 売上（この契約期間の条件）
+  planName     String?
+  monthlyFee   Int?
+  discountRate Float?
+  discountNote String?
+  options      Json?
+  contractNote String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([contractStart])
+  @@index([contractEnd])
 }
