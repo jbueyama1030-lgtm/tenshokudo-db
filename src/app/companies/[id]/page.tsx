@@ -2,6 +2,7 @@
 import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import ContractPeriods from "@/components/ContractPeriods"
 import {
   getRoles,
   canEditCompanyFull,
@@ -27,6 +28,15 @@ type DriverSales = {
   monthlyRevenue?: number
   annualRevenue?: number
   shifts?: Record<string, { top?: number; avg?: number }>
+}
+
+// 契約期間（この画面では年間売上の集計にだけ使う）
+type ContractPeriodLite = {
+  contractStart: string | null
+  contractEnd: string | null
+  monthlyFee: number | null
+  discountRate: number | null
+  options: Option[] | null
 }
 
 type Company = {
@@ -204,9 +214,21 @@ const CERT_OPTIONS = [
   { value: 3, label: "★★★" },
 ]
 
-function daysUntil(dateStr: string | null) {
-  if (!dateStr) return null
-  return Math.ceil((new Date(dateStr).getTime() - new Date().getTime()) / 86400000)
+// 契約期間1本の年間売上
+function periodAnnualRevenue(p: ContractPeriodLite): number {
+  const base = (p.monthlyFee ?? 0) * 12
+  const discount = Math.round(base * ((p.discountRate ?? 0) / 100))
+  const opt = (p.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
+  return base - discount + opt
+}
+
+// その契約期間が今アクティブか
+function periodIsActive(p: ContractPeriodLite): boolean {
+  if (!p.contractStart) return false
+  const now = new Date()
+  if (new Date(p.contractStart) > now) return false
+  if (p.contractEnd && new Date(p.contractEnd) < now) return false
+  return true
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -338,12 +360,15 @@ export default function CompanyDetailPage() {
   const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
   const [taskLoading, setTaskLoading] = useState(false)
 
+  // 契約期間（年間売上の集計用。ContractPeriods コンポーネントとは別に軽く取得）
+  const [periods, setPeriods] = useState<ContractPeriodLite[]>([])
+
   const [inlineField, setInlineField] = useState<string>("")
   const [inlineValue, setInlineValue] = useState<string>("")
   const [inlineSaving, setInlineSaving] = useState(false)
   const [inlineSavedMsg, setInlineSavedMsg] = useState(false)
 
-  useEffect(() => {
+  const loadCompany = () => {
     fetch("/api/companies/" + id).then(r => r.json()).then(data => {
       setCompany(data)
       setForm({
@@ -356,6 +381,17 @@ export default function CompanyDetailPage() {
         referralFees: data.referralFees ?? [],
       })
     })
+  }
+
+  const loadPeriods = () => {
+    fetch("/api/companies/" + id + "/contract-periods").then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setPeriods(d)
+    })
+  }
+
+  useEffect(() => {
+    loadCompany()
+    loadPeriods()
     fetch("/api/users").then(r => r.json()).then(setUsers)
     fetch("/api/auth/session").then(r => r.json()).then(s => {
       setUserName(s?.user?.name ?? "")
@@ -485,11 +521,10 @@ export default function CompanyDetailPage() {
 
   if (!company) return <div className="flex h-screen items-center justify-center text-gray-400">読み込み中...</div>
 
-  const annualBase = (form.monthlyFee ?? 0) * 12
-  const discountAmt = Math.round(annualBase * ((form.discountRate ?? 0) / 100))
-  const optionTotal = (form.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
-  const totalRevenue = annualBase - discountAmt + optionTotal
-  const renewalDays = daysUntil(company.contractRenewal)
+  // 今アクティブな掲載契約の年間売上合計（競合媒体セクションの採用単価に使う）
+  const activeAnnualRevenue = periods
+    .filter(periodIsActive)
+    .reduce((s, p) => s + periodAnnualRevenue(p), 0)
 
   // ===== 権限判定（roles ベース） =====
   const roles = getRoles(session)
@@ -589,7 +624,6 @@ export default function CompanyDetailPage() {
                       setForm(f => ({
                         ...f,
                         status: v,
-                        // 人材紹介のみを選んだら紹介契約を自動でオンにする
                         hasReferralContract: v === "referral_only" ? true : f.hasReferralContract,
                       }))
                     }}
@@ -852,113 +886,28 @@ export default function CompanyDetailPage() {
             </table>
             {editing && <button type="button" onClick={() => set("competitorMedia", [...(form.competitorMedia ?? []), { name: "", monthly: null, costPerHire: null, note: "" }])} className="text-xs text-blue-600 hover:underline">＋ 媒体を追加</button>}
             <div className="mt-3 pt-3 border-t border-gray-100">
-              <TenshokudoCostPerHire annualRevenue={totalRevenue} records={company.monthlyRecords ?? []} />
+              <TenshokudoCostPerHire annualRevenue={activeAnnualRevenue} records={company.monthlyRecords ?? []} />
             </div>
           </div>
 
-          {/* 売上管理 */}
+          {/* 掲載契約（契約期間） */}
+          <ContractPeriods
+            companyId={company.id}
+            canEdit={canFull}
+            onStatusMaybeChanged={() => { loadCompany(); loadPeriods() }}
+          />
+
+          {/* 転職道実績 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-gray-700">売上管理</h2>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400">年間売上合計</span>
-                <span className="text-2xl font-bold text-blue-700">¥{fmt(totalRevenue)}</span>
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">転職道実績（累計）</h2>
+            <div className="grid grid-cols-2 gap-4 max-w-md">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-xs text-gray-400 mb-1">累計応募数</div>
+                <div className="text-2xl font-bold text-gray-900">{company.applyCount}</div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="プラン">
-                    {editing
-                      ? <select value={form.planName ?? ""} onChange={e => set("planName", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
-                          <option value="">未設定</option>
-                          <option>ライト</option><option>スタンダード</option><option>ハイグレード</option>
-                        </select>
-                      : <p className="text-sm text-gray-900">{company.planName ?? "-"}</p>}
-                  </Field>
-                  <Field label="月額掲載料">
-                    {editing
-                      ? <input type="number" value={form.monthlyFee ?? ""} onChange={e => set("monthlyFee", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="円" />
-                      : <p className="text-sm text-gray-900">{company.monthlyFee != null ? "¥" + fmt(company.monthlyFee) : "-"}</p>}
-                  </Field>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <span className="text-xs text-gray-500">年間掲載料（基本）</span>
-                  <span className="text-sm font-medium">¥{fmt(annualBase)}</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">割引率</span>
-                    {editing
-                      ? <input type="number" value={form.discountRate ?? ""} onChange={e => set("discountRate", e.target.value === "" ? null : Number(e.target.value))} className="border border-gray-300 rounded px-2 py-1 text-xs w-16 text-gray-900" placeholder="%" />
-                      : <span className="text-xs bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full">{company.discountRate ?? 0}%</span>}
-                  </div>
-                  <span className="text-sm text-red-500 font-medium">－ ¥{fmt(discountAmt)}</span>
-                </div>
-                <div className="py-2 border-b border-gray-100">
-                  <div className="text-xs text-gray-400 mb-2">オプション（追加広告等）</div>
-                  {(editing ? form.options ?? [] : company.options ?? []).map((op, i) => (
-                    <div key={i} className="flex items-center justify-between mb-1.5">
-                      {editing
-                        ? <>
-                            <input value={op.name} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs flex-1 mr-2 text-gray-900" placeholder="オプション名" />
-                            <input type="number" value={op.amount} onChange={e => { const arr = [...(form.options ?? [])]; arr[i] = { ...arr[i], amount: e.target.value === "" ? 0 : Number(e.target.value) }; set("options", arr) }} className="border border-gray-200 rounded px-2 py-1 text-xs w-28 mr-2 text-gray-900" placeholder="金額" />
-                            <button type="button" onClick={() => set("options", (form.options ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs">削除</button>
-                          </>
-                        : <>
-                            <span className="text-xs text-gray-600">{op.name}</span>
-                            <span className="text-sm font-medium text-green-700">＋ ¥{fmt(op.amount)}</span>
-                          </>}
-                    </div>
-                  ))}
-                  {editing && <button type="button" onClick={() => set("options", [...(form.options ?? []), { name: "", amount: 0 }])} className="text-xs text-blue-600 hover:underline">＋ オプション追加</button>}
-                </div>
-                <Field label="割引備考">
-                  {editing
-                    ? <input value={form.discountNote ?? ""} onChange={e => set("discountNote", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 3年契約5%OFF" />
-                    : <p className="text-sm text-gray-900">{company.discountNote || "-"}</p>}
-                </Field>
-              </div>
-              <div className="space-y-3">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="text-xs text-gray-400 mb-3">契約期間</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="契約開始日">
-                      {editing
-                        ? <input type="date" value={form.contractStart?.slice(0, 10) ?? ""} onChange={e => set("contractStart", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" />
-                        : <p className="text-sm text-gray-900">{company.contractStart?.slice(0, 10) ?? "-"}</p>}
-                    </Field>
-                    <Field label="次回更新日">
-                      {editing
-                        ? <input type="date" value={form.contractRenewal?.slice(0, 10) ?? ""} onChange={e => set("contractRenewal", e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" />
-                        : <div>
-                            <p className="text-sm text-gray-900">{company.contractRenewal?.slice(0, 10) ?? "-"}</p>
-                            {renewalDays != null && (
-                              <span className={"text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block " + (renewalDays <= 14 ? "bg-red-100 text-red-700" : renewalDays <= 60 ? "bg-yellow-100 text-yellow-700" : "bg-green-100 text-green-700")}>残{renewalDays}日</span>
-                            )}
-                          </div>}
-                    </Field>
-                  </div>
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="text-xs text-gray-400 mb-1">契約期間備考</div>
-                    {editing
-                      ? <textarea value={form.contractNote ?? ""} onChange={e => set("contractNote", e.target.value)} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 初年度のみ半年契約、更新時に再見積もり等" />
-                      : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.contractNote || "-"}</p>}
-                  </div>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="text-xs text-gray-400 mb-3">転職道実績</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">累計応募数</div>
-                      <div className="text-2xl font-bold text-gray-900">{company.applyCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs text-gray-400 mb-1">累計入社数</div>
-                      <div className="text-2xl font-bold text-green-600">{company.hireCount}</div>
-                    </div>
-                  </div>
-                </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-xs text-gray-400 mb-1">累計入社数</div>
+                <div className="text-2xl font-bold text-green-600">{company.hireCount}</div>
               </div>
             </div>
           </div>
