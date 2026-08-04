@@ -525,6 +525,9 @@ export default function CompanyDetailPage() {
   const activeAnnualRevenue = periods
     .filter(periodIsActive)
     .reduce((s, p) => s + periodAnnualRevenue(p), 0)
+    // 転職道実績（累計）は月次実績の全期間合計で出す
+  const totalApply = (company.monthlyRecords ?? []).reduce((s, r) => s + (r.applyCount ?? 0), 0)
+  const totalHire = (company.monthlyRecords ?? []).reduce((s, r) => s + (r.hireCount ?? 0), 0)
 
   // ===== 権限判定（roles ベース） =====
   const roles = getRoles(session)
@@ -772,13 +775,13 @@ export default function CompanyDetailPage() {
                   </Field>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-400 mb-2">勤務形態別ドライバー売上（万円）</div>
+                  <div className="text-xs text-gray-400 mb-2">勤務形態別ドライバー売上（円）</div>
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">勤務形態</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">トップ売上（万円）</th>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">平均売上（万円）</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">トップ売上（円）</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">平均売上（円）</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -791,7 +794,7 @@ export default function CompanyDetailPage() {
                               value={(form.driverSales as DriverSales)?.shifts?.[shift]?.top ?? ""}
                               onChange={e => setDriverShift(shift, "top", e.target.value)}
                               className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900"
-                              placeholder="例: 100"
+                              placeholder="例: 700000"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -800,7 +803,7 @@ export default function CompanyDetailPage() {
                               value={(form.driverSales as DriverSales)?.shifts?.[shift]?.avg ?? ""}
                               onChange={e => setDriverShift(shift, "avg", e.target.value)}
                               className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900"
-                              placeholder="例: 70"
+                              placeholder="例: 700000"
                             />
                           </td>
                         </tr>
@@ -841,10 +844,10 @@ export default function CompanyDetailPage() {
                           <tr key={shift} className="hover:bg-gray-50">
                             <td className="px-3 py-2 text-xs font-medium text-gray-700">{shift}</td>
                             <td className="px-3 py-2 text-right font-bold text-blue-600">
-                              {company.driverSales?.shifts?.[shift]?.top != null ? company.driverSales.shifts[shift].top + "万円" : "-"}
+                              {company.driverSales?.shifts?.[shift]?.top != null ? "¥" + fmt(company.driverSales.shifts[shift].top) : "-"}
                             </td>
                             <td className="px-3 py-2 text-right font-bold text-gray-600">
-                              {company.driverSales?.shifts?.[shift]?.avg != null ? company.driverSales.shifts[shift].avg + "万円" : "-"}
+                              {company.driverSales?.shifts?.[shift]?.avg != null ? "¥" + fmt(company.driverSales.shifts[shift].avg) : "-"}
                             </td>
                           </tr>
                         ))}
@@ -903,13 +906,14 @@ export default function CompanyDetailPage() {
             <div className="grid grid-cols-2 gap-4 max-w-md">
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-xs text-gray-400 mb-1">累計応募数</div>
-                <div className="text-2xl font-bold text-gray-900">{company.applyCount}</div>
+                <div className="text-2xl font-bold text-gray-900">{totalApply}</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-xs text-gray-400 mb-1">累計入社数</div>
-                <div className="text-2xl font-bold text-green-600">{company.hireCount}</div>
+                <div className="text-2xl font-bold text-green-600">{totalHire}</div>
               </div>
             </div>
+            <p className="text-xs text-gray-400 mt-2">月次実績の全期間合計です。</p>
           </div>
 
           {/* 月次実績 */}
