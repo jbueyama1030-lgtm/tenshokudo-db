@@ -49,7 +49,9 @@ export default function Sidebar({ userName }: { userName?: string }) {
     { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
     { href: "/companies/import-monthly", label: "📈 月次インポート" },
     { href: "/import/applications", label: "📥 応募明細インポート" },
+    { href: "/import/ad-costs", label: "💰 広告費インポート" },
     { href: "/marketing", label: "📊 マーケ分析" },
+    { href: "/marketing/budget", label: "🎯 かけて良い広告費" },
     { href: "/marketing/ad-costs", label: "💰 広告費入力" },
     { href: "/marketing/area", label: "🗾 エリア別分析" },
     { href: "/marketing/cross", label: "🔀 エリア×媒体" },
@@ -69,6 +71,8 @@ export default function Sidebar({ userName }: { userName?: string }) {
     ...(isAdmin ? adminOnlyLinks : []),
   ]
 
+const exactOnly = ["/companies", "/marketing"]
+
   return (
     <aside className="w-48 min-w-48 bg-[#0C1A2E] flex flex-col">
       <div className="px-5 py-5 border-b border-white/10">
@@ -78,7 +82,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
       <nav className="flex-1 py-4 overflow-y-auto">
         <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
         {links.map(link => {
-          const isActive = pathname === link.href || (link.href === "/companies" ? false : pathname.startsWith(link.href + "/"))
+          const isActive = pathname === link.href || (exactOnly.includes(link.href) ? false : pathname.startsWith(link.href + "/"))
           return (
             <a
               key={link.href}
