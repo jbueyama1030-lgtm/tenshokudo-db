@@ -1,17 +1,41 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { canEditCompanyFull } from "@/lib/permissions"
+import { canEditCompanyFull, isInAgencyScope } from "@/lib/permissions"
 import { recalcCompanyStatus } from "@/lib/contractStatus"
 
 const prisma = new PrismaClient()
 
-async function assertCanEdit(session: Parameters<typeof canEditCompanyFull>[0], companyId: string) {
-  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { userId: true } })
+// 企業の権限と、periodId が本当にその企業のものかを両方チェックする
+async function assertCanEdit(
+  session: Parameters<typeof canEditCompanyFull>[0],
+  companyId: string,
+  periodId: string
+) {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { userId: true, agencyId: true },
+  })
   if (!company) return { ok: false as const, status: 404, error: "企業が見つかりません" }
+
+  // 代理店スコープ外は存在ごと隠す
+  if (!isInAgencyScope(session, company.agencyId)) {
+    return { ok: false as const, status: 404, error: "企業が見つかりません" }
+  }
+
   if (!canEditCompanyFull(session, company.userId)) {
     return { ok: false as const, status: 403, error: "編集権限がありません" }
   }
+
+  // URLの企業IDと契約期間の所属が一致しているか（他企業の期間を書き換えられないように）
+  const period = await prisma.contractPeriod.findUnique({
+    where: { id: periodId },
+    select: { companyId: true },
+  })
+  if (!period || period.companyId !== companyId) {
+    return { ok: false as const, status: 404, error: "契約期間が見つかりません" }
+  }
+
   return { ok: true as const }
 }
 
@@ -24,7 +48,7 @@ export async function PATCH(
   if (!session) return NextResponse.json({ error: "未認証です" }, { status: 401 })
 
   const { id, periodId } = await params
-  const check = await assertCanEdit(session, id)
+  const check = await assertCanEdit(session, id, periodId)
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
 
   const body = await req.json()
@@ -58,7 +82,7 @@ export async function DELETE(
   if (!session) return NextResponse.json({ error: "未認証です" }, { status: 401 })
 
   const { id, periodId } = await params
-  const check = await assertCanEdit(session, id)
+  const check = await assertCanEdit(session, id, periodId)
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
 
   await prisma.contractPeriod.delete({ where: { id: periodId } })

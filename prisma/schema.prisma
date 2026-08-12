@@ -16,12 +16,19 @@ model User {
   roles     String[]  @default([])
   isActive  Boolean   @default(true)
   chatworkAccountId String?
+
+  // 所属代理店（null = メーカー＝自社。全企業閲覧可）
+  agencyId  String?
+  agency    Agency?   @relation(fields: [agencyId], references: [id])
+
   createdAt DateTime  @default(now())
   companies Company[]
   assignedTasks  ProductionTask[] @relation("TaskAssignee")
   requestedTasks ProductionTask[] @relation("TaskRequester")
   updatedTasks   ProductionTask[] @relation("TaskLastUpdatedBy")
   taskComments   TaskComment[]
+
+  @@index([agencyId])
 }
 
 model Company {
@@ -31,6 +38,11 @@ model Company {
   status    String  @default("approaching")
   userId    String
   user      User    @relation(fields: [userId], references: [id])
+
+  // 担当代理店（null = 直販＝メーカー案件）
+  agencyId  String?
+  agency    Agency? @relation(fields: [agencyId], references: [id])
+
   contactPerson    String?
   contactPosition  String?
   workplaceCertLevel Int @default(0)
@@ -80,7 +92,7 @@ model Company {
   // メモ
   memo String?
 
-  // ドライバー売上情報
+  // ドライバー売上情報（単位: 円）
   driverSales Json?
 
   // ===== 人材紹介（キャリアアドバイザー向け） =====
@@ -129,6 +141,8 @@ model Company {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([agencyId])
 }
 
 model MonthlyRecord {
@@ -268,10 +282,31 @@ model ContractPeriod {
   options      Json?
   contractNote String?  @db.Text
 
+  // ===== 代理店マージン =====
+  // 契約成立月に確定。掲載料はラダー（30/35/40/45%）、オプションは一律30%。
+  // 特別対応は手入力で上書きする。
+  marginRate      Float?
+  // 実際に代理店へ支払った額（年間一括・税抜ベース）
+  marginAmount    Int?
+  // 支払月（＝契約成立月）
+  marginPaidMonth DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([companyId])
   @@index([contractStart])
   @@index([contractEnd])
+}
+
+model Agency {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  note      String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  users     User[]
+  companies Company[]
 }

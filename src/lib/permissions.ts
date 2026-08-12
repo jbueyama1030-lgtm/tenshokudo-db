@@ -7,6 +7,8 @@ type SessionLike = {
     id?: string
     role?: string
     roles?: string[]
+    // 所属代理店ID（null/undefined = メーカー＝自社）
+    agencyId?: string | null
   }
 } | null | undefined
 
@@ -48,15 +50,42 @@ export function isAdvisor(session: SessionLike): boolean {
   return hasRole(session, "advisor")
 }
 
+// ===== 代理店（Agency） =====
+
+// 代理店ユーザーか（agencyId を持つ = 外部代理店の人）
+export function isAgencyUser(session: SessionLike): boolean {
+  return !!session?.user?.agencyId
+}
+
+/**
+ * 企業の閲覧範囲フィルタ。
+ * 代理店ユーザー → 自代理店の企業のみ
+ * メーカー（agencyId が null）→ 全件
+ * prisma の where にスプレッドで混ぜて使う。
+ */
+export function companyScopeFilter(session: SessionLike) {
+  const agencyId = session?.user?.agencyId
+  return agencyId ? { agencyId } : {}
+}
+
+/** その企業を代理店スコープ的に触れるか（詳細・更新・削除の入口チェック） */
+export function isInAgencyScope(session: SessionLike, companyAgencyId: string | null): boolean {
+  const my = session?.user?.agencyId
+  if (!my) return true // メーカーは全件OK
+  return my === companyAgencyId
+}
+
 // ===== 機能単位の判定 =====
 
-// マーケ分析画面を見られるか
+// マーケ分析画面を見られるか（代理店ユーザーは不可）
 export function canViewMarketing(session: SessionLike): boolean {
+  if (isAgencyUser(session)) return false
   return isMarketer(session) || isAdmin(session)
 }
 
-// CSVインポート系を使えるか
+// CSVインポート系を使えるか（代理店ユーザーは不可）
 export function canImportData(session: SessionLike): boolean {
+  if (isAgencyUser(session)) return false
   return isMarketer(session) || isAdmin(session)
 }
 
@@ -93,18 +122,21 @@ export function canDeleteCompany(session: SessionLike, companyUserId: string): b
   return false
 }
 
-// 制作案件を見られるか
+// 制作案件を見られるか（代理店ユーザーは不可＝制作依頼はマスク）
 export function canViewProduction(session: SessionLike): boolean {
+  if (isAgencyUser(session)) return false
   return isSales(session) || isProduction(session) || isAdmin(session)
 }
 
 // 制作案件を起票できるか
 export function canCreateTask(session: SessionLike): boolean {
+  if (isAgencyUser(session)) return false
   return isSales(session) || isAdmin(session)
 }
 
 // 制作案件の担当割当・ステータス変更ができるか
 export function canManageTask(session: SessionLike): boolean {
+  if (isAgencyUser(session)) return false
   return isProduction(session) || isAdmin(session)
 }
 

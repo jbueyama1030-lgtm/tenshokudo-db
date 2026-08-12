@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 export default function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname()
   const [roles, setRoles] = useState<string[]>([])
+  const [agencyId, setAgencyId] = useState<string | null>(null)
   const [unassignedCount, setUnassignedCount] = useState(0)
 
   useEffect(() => {
@@ -14,6 +15,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
       if (Array.isArray(rs) && rs.length > 0) setRoles(rs)
       else if (s?.user?.role) setRoles([s.user.role])
       else setRoles([])
+      setAgencyId(s?.user?.agencyId ?? null)
     })
     fetch("/api/production-tasks").then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
@@ -21,6 +23,9 @@ export default function Sidebar({ userName }: { userName?: string }) {
       }
     })
   }, [])
+
+  // 代理店ユーザー（agencyId あり）は制作・マーケ系を一切表示しない
+  const isAgency = !!agencyId
 
   const isSales = roles.includes("sales")
   const isProduction = roles.includes("production")
@@ -66,12 +71,12 @@ export default function Sidebar({ userName }: { userName?: string }) {
   const links = [
     ...commonLinks,
     ...(isSales || isAdmin ? salesLinks : []),
-    ...(isProduction || isAdmin ? productionLinks : []),
-    ...(isMarketer || isAdmin ? marketerLinks : []),
-    ...(isAdmin ? adminOnlyLinks : []),
+    ...(!isAgency && (isProduction || isAdmin) ? productionLinks : []),
+    ...(!isAgency && (isMarketer || isAdmin) ? marketerLinks : []),
+    ...(!isAgency && isAdmin ? adminOnlyLinks : []),
   ]
 
-const exactOnly = ["/companies", "/marketing"]
+  const exactOnly = ["/companies", "/marketing"]
 
   return (
     <aside className="w-48 min-w-48 bg-[#0C1A2E] flex flex-col">

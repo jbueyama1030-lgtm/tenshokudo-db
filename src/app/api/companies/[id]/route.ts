@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { canEditCompanyFull, canEditReferralOnly, canDeleteCompany, REFERRAL_FIELDS } from "@/lib/permissions"
+import { canEditCompanyFull, canEditReferralOnly, canDeleteCompany, isInAgencyScope, REFERRAL_FIELDS } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -21,6 +21,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   })
 
   if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  // 代理店ユーザーは自代理店の企業以外にアクセスさせない
+  // 存在を推測されないよう 403 ではなく 404 を返す
+  if (!isInAgencyScope(session, company.agencyId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
   return NextResponse.json(company)
 }
 
@@ -33,6 +40,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const existing = await prisma.company.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  if (!isInAgencyScope(session, existing.agencyId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
 
   const canFull = canEditCompanyFull(session, existing.userId)
   const canReferral = canEditReferralOnly(session, existing.userId)
@@ -154,6 +165,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const existing = await prisma.company.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  if (!isInAgencyScope(session, existing.agencyId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
 
   if (!canDeleteCompany(session, existing.userId)) {
     return NextResponse.json({ error: "この企業を削除する権限がありません" }, { status: 403 })

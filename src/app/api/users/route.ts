@@ -22,11 +22,15 @@ function primaryRole(roles: string[]): string {
 }
 
 // GET は全ロールに開放（担当者プルダウン等で使用。パスワードは返さない）
+// 代理店ユーザーには自代理店のメンバーのみ返す（社内・他代理店の人員は見せない）
 export async function GET() {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  const myAgencyId = session.user.agencyId ?? null
+
   const users = await prisma.user.findMany({
+    where: myAgencyId ? { agencyId: myAgencyId } : {},
     select: {
       id: true, name: true, email: true,
       role: true, roles: true, isActive: true,
@@ -74,18 +78,21 @@ export async function POST(request: Request) {
       roles,
       isActive: true,
       chatworkAccountId: chatworkAccountId || null,
+      // 代理店に所属させる場合は agencyId を指定（null = メーカー＝自社）
+      agencyId: body.agencyId || null,
     },
     select: {
       id: true, name: true, email: true,
       role: true, roles: true, isActive: true,
       chatworkAccountId: true, createdAt: true,
+      agencyId: true,
     },
   })
 
   return NextResponse.json(user)
 }
 
-// PATCH: 既存ユーザーの更新（ChatWorkID / ロール / 有効無効）
+// PATCH: 既存ユーザーの更新（ChatWorkID / ロール / 有効無効 / 所属代理店）
 export async function PATCH(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -111,6 +118,13 @@ export async function PATCH(request: Request) {
 
   if (has("chatworkAccountId")) {
     data.chatworkAccountId = body.chatworkAccountId || null
+  }
+
+  if (has("agencyId")) {
+    if (id === session.user.id) {
+      return NextResponse.json({ error: "自分自身の所属は変更できません" }, { status: 400 })
+    }
+    data.agencyId = body.agencyId || null
   }
 
   if (has("roles")) {
@@ -155,6 +169,7 @@ export async function PATCH(request: Request) {
       id: true, name: true, email: true,
       role: true, roles: true, isActive: true,
       chatworkAccountId: true, createdAt: true,
+      agencyId: true,
     },
   })
 

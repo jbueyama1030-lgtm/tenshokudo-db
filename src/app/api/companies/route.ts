@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { canCreateCompany } from "@/lib/permissions"
+import { canCreateCompany, companyScopeFilter } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -10,6 +10,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const companies = await prisma.company.findMany({
+    where: { ...companyScopeFilter(session) },
     include: { user: { select: { id: true, name: true } } },
     orderBy: { updatedAt: "desc" },
   })
@@ -29,13 +30,28 @@ export async function POST(request: Request) {
 
   if (!body.name) return NextResponse.json({ error: "会社名は必須です" }, { status: 400 })
 
+  // 代理店ユーザーは他代理店の担当者を指定できない（自分に強制）
+  const myAgencyId = session.user.agencyId ?? null
+  let userId = body.userId || session.user.id
+  if (myAgencyId) {
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { agencyId: true },
+    })
+    if (!target || target.agencyId !== myAgencyId) {
+      userId = session.user.id
+    }
+  }
+
   const company = await prisma.company.create({
     data: {
       // 基本情報
       name: body.name,
       companyId: body.companyId || null,
       status: body.status || "approaching",
-      userId: body.userId || session.user.id,
+      userId,
+      // 代理店ユーザーが作成した企業は自代理店に紐づける
+      agencyId: myAgencyId,
       phone: body.phone || null,
       address: body.address || null,
       persona: body.persona ?? [],

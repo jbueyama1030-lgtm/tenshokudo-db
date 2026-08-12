@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { canEditCompanyFull } from "@/lib/permissions"
+import { canEditCompanyFull, isInAgencyScope } from "@/lib/permissions"
 import { recalcCompanyStatus } from "@/lib/contractStatus"
 
 const prisma = new PrismaClient()
@@ -15,6 +15,14 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "未認証です" }, { status: 401 })
 
   const { id } = await params
+
+  // 親企業が閲覧範囲外なら存在ごと隠す
+  const company = await prisma.company.findUnique({ where: { id }, select: { agencyId: true } })
+  if (!company) return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 })
+  if (!isInAgencyScope(session, company.agencyId)) {
+    return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 })
+  }
+
   const periods = await prisma.contractPeriod.findMany({
     where: { companyId: id },
     orderBy: [{ contractStart: "desc" }],
@@ -33,8 +41,11 @@ export async function POST(
   const { id } = await params
 
   // 掲載契約の編集は全項目編集権限に準じる
-  const company = await prisma.company.findUnique({ where: { id }, select: { userId: true } })
+  const company = await prisma.company.findUnique({ where: { id }, select: { userId: true, agencyId: true } })
   if (!company) return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 })
+  if (!isInAgencyScope(session, company.agencyId)) {
+    return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 })
+  }
   if (!canEditCompanyFull(session, company.userId)) {
     return NextResponse.json({ error: "編集権限がありません" }, { status: 403 })
   }
