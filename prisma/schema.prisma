@@ -221,6 +221,10 @@ model ApplicationRecord {
   status      String
   inflow      String
 
+  // 応募種別（TEL応募 / 一般応募 / 代理応募 / 会員応募）。CSVの「種別」列。
+  // TEL応募は流入がほぼ「未設定」になるため、未設定の内訳を把握するのに使う。
+  entryType   String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -228,6 +232,7 @@ model ApplicationRecord {
   @@index([year, month])
   @@index([inflow])
   @@index([sourceCompanyId])
+  @@index([entryType])
 }
 
 model AdCost {

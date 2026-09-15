@@ -8,41 +8,15 @@ type ImportResult = {
   error: number
   shifted: number
   unmatched: number
-}
-
-// CSVを1行ずつ配列にパース（ダブルクォート対応の簡易パーサ）
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let cur: string[] = []
-  let field = ""
-  let inQuotes = false
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++ }
-        else inQuotes = false
-      } else {
-        field += c
-      }
-    } else {
-      if (c === '"') inQuotes = true
-      else if (c === ",") { cur.push(field); field = "" }
-      else if (c === "\n") { cur.push(field); rows.push(cur); cur = []; field = "" }
-      else if (c === "\r") { /* skip */ }
-      else field += c
-    }
-  }
-  if (field.length > 0 || cur.length > 0) { cur.push(field); rows.push(cur) }
-  return rows
+  deleted: number
 }
 
 export default function ApplicationsImportPage() {
   const [userName, setUserName] = useState("")
   const [fileName, setFileName] = useState("")
-  const [rows, setRows] = useState<Record<string, string>[]>([])
-  const [previewCount, setPreviewCount] = useState(0)
+  const [csv, setCsv] = useState("")
+  const [lineCount, setLineCount] = useState(0)
+  const [skipGuard, setSkipGuard] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState("")
@@ -58,10 +32,7 @@ export default function ApplicationsImportPage() {
 
     // まず UTF-8 で読み、文字化けらしき場合は Shift-JIS で読み直す
     const buf = await file.arrayBuffer()
-    let text = new TextDecoder("utf-8").decode(buf)
-    // BOM除去
-    text = text.replace(/^\uFEFF/, "")
-    // 文字化け判定（U+FFFD が多い場合は cp932 で読み直し）
+    let text = new TextDecoder("utf-8").decode(buf).replace(/^\uFEFF/, "")
     const badCount = (text.match(/\uFFFD/g) || []).length
     if (badCount > 5) {
       try {
@@ -69,37 +40,15 @@ export default function ApplicationsImportPage() {
       } catch { /* shift-jis 未対応環境ならそのまま */ }
     }
 
-    const parsed = parseCsv(text)
-    if (parsed.length < 2) { setError("データ行が見つかりません"); return }
+    const lines = text.split("\n").filter(l => l.trim() !== "").length
+    if (lines < 2) { setError("データ行が見つかりません"); return }
 
-    const header = parsed[0].map(h => h.trim())
-    const idx = (name: string) => header.indexOf(name)
-
-    const iDate = idx("応募日")
-    const iCompanyId = idx("企業ID")
-    const iStatus = idx("ステータス")
-    const iInflow = idx("流入")
-
-    if (iDate < 0 || iCompanyId < 0 || iStatus < 0 || iInflow < 0) {
-      setError("必要な列（応募日 / 企業ID / ステータス / 流入）が見つかりません。ヘッダーを確認してください。")
-      return
-    }
-
-    const dataRows = parsed.slice(1)
-      .filter(r => r.length > iDate && (r[iCompanyId]?.trim() || r[iDate]?.trim()))
-      .map(r => ({
-        appliedAt: (r[iDate] ?? "").trim(),
-        companyId: (r[iCompanyId] ?? "").trim(),
-        status: (r[iStatus] ?? "").trim(),
-        inflow: (r[iInflow] ?? "").trim(),
-      }))
-
-    setRows(dataRows)
-    setPreviewCount(dataRows.length)
+    setCsv(text)
+    setLineCount(lines - 1)
   }
 
   const handleImport = async () => {
-    if (rows.length === 0) return
+    if (!csv) return
     setLoading(true)
     setError("")
     setResult(null)
@@ -107,16 +56,20 @@ export default function ApplicationsImportPage() {
     const res = await fetch("/api/import/applications", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows }),
+      body: JSON.stringify({ csv, skipGuard }),
     })
 
+    const data = await res.json()
     if (res.ok) {
-      setResult(await res.json())
+      setResult(data)
     } else {
-      const data = await res.json()
       setError(data.error ?? "取り込みに失敗しました")
     }
     setLoading(false)
+  }
+
+  const reset = () => {
+    setResult(null); setCsv(""); setLineCount(0); setFileName(""); setError(""); setSkipGuard(false)
   }
 
   return (
@@ -126,7 +79,7 @@ export default function ApplicationsImportPage() {
         <div className="px-8 py-6 max-w-3xl">
           <h1 className="text-xl font-bold text-gray-800 mb-2">応募明細インポート</h1>
           <p className="text-sm text-gray-500 mb-6">
-            応募データのCSV（entry_〜.csv）を取り込みます。氏名・電話番号などの個人情報は保存されず、集計に必要な項目（応募日・企業ID・ステータス・流入）のみが取り込まれます。同じ応募は最新のステータスで自動更新されます。
+            応募データのCSV（entry_〜.csv）を取り込みます。氏名・電話番号などの個人情報は保存されず、集計に必要な項目（応募日・企業ID・ステータス・流入）のみが取り込まれます。CSVに含まれる年月のデータは一度削除してから入れ直すため、ステータスの更新も反映されます。
           </p>
 
           {/* ファイル選択 */}
@@ -141,24 +94,40 @@ export default function ApplicationsImportPage() {
             {fileName && (
               <div className="mt-4 text-sm text-gray-600">
                 <span className="font-medium">{fileName}</span>
-                {previewCount > 0 && <span className="ml-2 text-gray-400">読み込み {previewCount} 件</span>}
+                {lineCount > 0 && <span className="ml-2 text-gray-400">読み込み {lineCount} 行</span>}
               </div>
             )}
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-700">{error}</div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-700">
+              {error}
+              {!skipGuard && error.includes("大幅に減少") && (
+                <div className="mt-3">
+                  <label className="flex items-center gap-2 text-red-800">
+                    <input type="checkbox" checked={skipGuard} onChange={e => setSkipGuard(e.target.checked)} />
+                    <span>内容を確認したうえで、件数チェックを無視して取り込む</span>
+                  </label>
+                </div>
+              )}
+            </div>
           )}
 
           {/* 取り込みボタン */}
-          {previewCount > 0 && !result && (
+          {lineCount > 0 && !result && (
             <button
               onClick={handleImport}
               disabled={loading}
               className="bg-blue-600 text-white px-6 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? "取り込み中..." : previewCount + " 件を取り込む"}
+              {loading ? "取り込み中..." : lineCount + " 行を取り込む"}
             </button>
+          )}
+
+          {loading && (
+            <p className="mt-3 text-sm text-gray-500">
+              件数が多い場合は数分かかります。このページを閉じないでください。
+            </p>
           )}
 
           {/* 結果 */}
@@ -184,11 +153,14 @@ export default function ApplicationsImportPage() {
                   <div className="text-2xl font-bold text-blue-700">{result.shifted}</div>
                 </div>
               </div>
+              <div className="mt-3 text-xs text-gray-500">
+                洗い替えで削除した既存データ: {result.deleted} 件
+              </div>
               {result.error > 0 && (
                 <div className="mt-3 text-sm text-red-600">エラー: {result.error} 件</div>
               )}
               <div className="mt-4">
-                <button onClick={() => { setResult(null); setRows([]); setPreviewCount(0); setFileName("") }} className="text-sm text-blue-600 hover:underline">
+                <button onClick={reset} className="text-sm text-blue-600 hover:underline">
                   別のファイルを取り込む
                 </button>
               </div>
