@@ -1,254 +1,284 @@
 "use client"
 import Sidebar from "@/components/Sidebar"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 
-type Funnel = {
+type Row = {
+  key: string
   apply: number
   contact: number
   interviewSet: number
   interviewDone: number
   hired: number
-}
-type InflowRow = Funnel & {
-  inflow: string
   adCost: number | null
   cpaApply: number | null
   cpaHire: number | null
+  contactRate: number
+  hireRate: number
 }
-type OverheadItem = { name: string; amount: number }
-type MarketingData = {
+
+type Data = {
   availableMonths: { year: number; month: number }[]
   target: { year: number; month: number } | null
-  overall: Funnel
-  byInflow: InflowRow[]
+  groupBy: "inflow" | "area" | "entryType"
+  filters: { area: string; entryType: string; inflow: string }
+  options: { areas: string[]; entryTypes: string[]; inflows: string[] }
+  overall: {
+    apply: number; contact: number; interviewSet: number; interviewDone: number; hired: number
+  }
+  rows: Row[]
   overallAdCost: number
   directAdCost: number
   overheadAdCost: number
-  overheadItems: OverheadItem[]
+  overheadItems: { name: string; amount: number }[]
+  costIsEstimated: boolean
 }
 
-function rate(num: number, den: number): string {
-  if (den === 0) return "-"
-  return ((num / den) * 100).toFixed(1) + "%"
+const GROUP_LABELS: Record<string, string> = {
+  inflow: "流入元",
+  area: "エリア",
+  entryType: "応募種別",
 }
-function yen(n: number | null | undefined) {
-  if (n == null) return "-"
-  return "¥" + Number(n).toLocaleString("ja-JP")
-}
+
+const yen = (v: number | null) => (v == null ? "—" : "¥" + v.toLocaleString("ja-JP"))
 
 export default function MarketingPage() {
   const [userName, setUserName] = useState("")
-  const [data, setData] = useState<MarketingData | null>(null)
+  const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [showOverhead, setShowOverhead] = useState(false)
 
-  const load = async (year?: number, month?: number) => {
-    setLoading(true)
-    setError("")
-    let url = "/api/marketing"
-    if (year && month) url += "?year=" + year + "&month=" + month
-    const res = await fetch(url)
-    if (res.ok) {
-      setData(await res.json())
-    } else {
-      const d = await res.json()
-      setError(d.error ?? "読み込みに失敗しました")
-    }
-    setLoading(false)
-  }
+  const [ym, setYm] = useState("")
+  const [area, setArea] = useState("")
+  const [entryType, setEntryType] = useState("")
+  const [inflow, setInflow] = useState("")
+  const [groupBy, setGroupBy] = useState<"inflow" | "area" | "entryType">("inflow")
 
   useEffect(() => {
     fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
-    load()
   }, [])
 
+  const load = useCallback(async () => {
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (ym) {
+      const [y, m] = ym.split("-")
+      params.set("year", y)
+      params.set("month", m)
+    }
+    if (area) params.set("area", area)
+    if (entryType) params.set("entryType", entryType)
+    if (inflow) params.set("inflow", inflow)
+    params.set("groupBy", groupBy)
+
+    const res = await fetch("/api/marketing?" + params.toString())
+    if (res.ok) {
+      setData(await res.json())
+    }
+    setLoading(false)
+  }, [ym, area, entryType, inflow, groupBy])
+
+  useEffect(() => { load() }, [load])
+
+  // 初回のみ、APIが返した対象月をセレクトの初期値にする
+  useEffect(() => {
+    if (!ym && data?.target) {
+      setYm(data.target.year + "-" + data.target.month)
+    }
+  }, [data, ym])
+
+  const resetFilters = () => { setArea(""); setEntryType(""); setInflow("") }
+  const hasFilter = !!(area || entryType || inflow)
+
   const o = data?.overall
-  // 全体CPAは配賦対象外も含めた総額で算出する
-  const overallCpaHire = data && o && o.hired > 0 ? Math.round(data.overallAdCost / o.hired) : null
-  const overallCpaApply = data && o && o.apply > 0 ? Math.round(data.overallAdCost / o.apply) : null
+  const rate = (n: number, d: number) => (d > 0 ? ((n / d) * 100).toFixed(1) + "%" : "—")
 
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar userName={userName} />
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <div className="text-xs text-gray-400 mb-1">マーケティング分析</div>
-              <h1 className="text-xl font-bold text-gray-800">媒体歩留まりダッシュボード</h1>
-            </div>
-            {data && data.availableMonths.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">対象月</span>
+          <h1 className="text-xl font-bold text-gray-800 mb-1">マーケティング分析</h1>
+          <p className="text-sm text-gray-500 mb-6">
+            応募データと広告費を突き合わせて、流入元・エリア・応募種別ごとの成果を確認できます。
+          </p>
+
+          {/* 絞り込み */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-5">
+            <div className="flex flex-wrap items-end gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">対象月</label>
                 <select
-                  value={data.target ? data.target.year + "-" + data.target.month : ""}
-                  onChange={e => {
-                    const [y, m] = e.target.value.split("-").map(Number)
-                    load(y, m)
-                  }}
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={ym}
+                  onChange={e => setYm(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-w-36"
                 >
-                  {data.availableMonths.map(m => (
+                  {data?.availableMonths.map(m => (
                     <option key={m.year + "-" + m.month} value={m.year + "-" + m.month}>
                       {m.year}年{m.month}月
                     </option>
                   ))}
                 </select>
               </div>
-            )}
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">エリア</label>
+                <select
+                  value={area}
+                  onChange={e => setArea(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-w-32"
+                >
+                  <option value="">全て</option>
+                  {data?.options.areas.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">応募種別</label>
+                <select
+                  value={entryType}
+                  onChange={e => setEntryType(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-w-32"
+                >
+                  <option value="">全て</option>
+                  {data?.options.entryTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">流入元</label>
+                <select
+                  value={inflow}
+                  onChange={e => setInflow(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm min-w-36"
+                >
+                  <option value="">全て</option>
+                  {data?.options.inflows.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
+
+              {hasFilter && (
+                <button onClick={resetFilters} className="text-sm text-blue-600 hover:underline pb-2">
+                  絞り込みを解除
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3">
+              <span className="text-xs text-gray-500">集計軸</span>
+              {(["inflow", "area", "entryType"] as const).map(g => (
+                <button
+                  key={g}
+                  onClick={() => setGroupBy(g)}
+                  className={
+                    "px-3 py-1.5 rounded-lg text-sm border transition-colors " +
+                    (groupBy === g
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50")
+                  }
+                >
+                  {GROUP_LABELS[g]}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-700">{error}</div>
-          )}
+          {loading && <div className="text-sm text-gray-500">読み込み中...</div>}
 
-          {loading ? (
-            <div className="text-gray-400 text-sm py-12 text-center">読み込み中...</div>
-          ) : !data || data.availableMonths.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-              <p className="text-gray-400 text-lg mb-2">応募データがありません</p>
-              <p className="text-gray-400 text-sm">応募明細インポートからCSVを取り込んでください</p>
-            </div>
-          ) : (
+          {!loading && data && (
             <>
-              {/* 全体KPI（上段：ファネル） */}
-              <div className="grid grid-cols-5 gap-3 mb-3">
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">総応募数</div>
-                  <div className="text-2xl font-bold text-gray-900">{o?.apply ?? 0}</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">接触数</div>
-                  <div className="text-2xl font-bold text-blue-600">{o?.contact ?? 0}</div>
-                  <div className="text-xs text-gray-400 mt-1">接触率 {rate(o?.contact ?? 0, o?.apply ?? 0)}</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">面接設定数</div>
-                  <div className="text-2xl font-bold text-indigo-600">{o?.interviewSet ?? 0}</div>
-                  <div className="text-xs text-gray-400 mt-1">対応募 {rate(o?.interviewSet ?? 0, o?.apply ?? 0)}</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">面接実施数</div>
-                  <div className="text-2xl font-bold text-purple-600">{o?.interviewDone ?? 0}</div>
-                  <div className="text-xs text-gray-400 mt-1">対応募 {rate(o?.interviewDone ?? 0, o?.apply ?? 0)}</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">入社数</div>
-                  <div className="text-2xl font-bold text-green-600">{o?.hired ?? 0}</div>
-                  <div className="text-xs text-gray-400 mt-1">入社率 {rate(o?.hired ?? 0, o?.apply ?? 0)}</div>
-                </div>
+              {/* サマリー */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                {[
+                  { label: "応募", value: o?.apply ?? 0, sub: "" },
+                  { label: "接触", value: o?.contact ?? 0, sub: rate(o?.contact ?? 0, o?.apply ?? 0) },
+                  { label: "面接設定", value: o?.interviewSet ?? 0, sub: rate(o?.interviewSet ?? 0, o?.apply ?? 0) },
+                  { label: "面接完了", value: o?.interviewDone ?? 0, sub: rate(o?.interviewDone ?? 0, o?.apply ?? 0) },
+                  { label: "入社", value: o?.hired ?? 0, sub: rate(o?.hired ?? 0, o?.apply ?? 0) },
+                ].map(c => (
+                  <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
+                    <div className="text-xs text-gray-500 mb-1">{c.label}</div>
+                    <div className="text-2xl font-bold text-gray-800">{c.value.toLocaleString("ja-JP")}</div>
+                    {c.sub && <div className="text-xs text-gray-400 mt-0.5">{c.sub}</div>}
+                  </div>
+                ))}
               </div>
 
-              {/* 全体KPI（下段：費用） */}
-              <div className="grid grid-cols-4 gap-3 mb-2">
+              {/* 広告費 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
                 <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">全体広告費</div>
-                  <div className="text-2xl font-bold text-gray-900">{yen(data.overallAdCost)}</div>
-                  <div className="text-xs text-gray-400 mt-1">媒体直課 {yen(data.directAdCost)}</div>
+                  <div className="text-xs text-gray-500 mb-1">広告費 合計</div>
+                  <div className="text-xl font-bold text-gray-800">{yen(data.overallAdCost)}</div>
                 </div>
-                <div className="bg-white rounded-xl border border-orange-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">その他広告費（配賦対象外）</div>
-                  <div className="text-2xl font-bold text-orange-600">{yen(data.overheadAdCost)}</div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">媒体直課（direct）</div>
+                  <div className="text-xl font-bold text-gray-800">{yen(data.directAdCost)}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">その他広告費（配賦対象外）</div>
+                  <div className="text-xl font-bold text-gray-800">{yen(data.overheadAdCost)}</div>
                   {data.overheadItems.length > 0 && (
-                    <button
-                      onClick={() => setShowOverhead(v => !v)}
-                      className="text-xs text-orange-600 hover:underline mt-1"
-                    >
-                      {showOverhead ? "内訳を隠す" : "内訳を見る（" + data.overheadItems.length + "件）"}
-                    </button>
+                    <div className="mt-2 space-y-0.5">
+                      {data.overheadItems.map(i => (
+                        <div key={i.name} className="flex justify-between text-xs text-gray-500">
+                          <span className="truncate mr-2">{i.name}</span>
+                          <span>{yen(i.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">全体 応募CPA</div>
-                  <div className="text-2xl font-bold text-blue-700">{yen(overallCpaApply)}</div>
-                  <div className="text-xs text-gray-400 mt-1">全体広告費ベース</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="text-xs text-gray-400 mb-1">全体 入社CPA</div>
-                  <div className="text-2xl font-bold text-green-700">{yen(overallCpaHire)}</div>
-                  <div className="text-xs text-gray-400 mt-1">全体広告費ベース</div>
-                </div>
               </div>
 
-              {/* その他広告費の内訳 */}
-              {showOverhead && data.overheadItems.length > 0 && (
-                <div className="bg-orange-50 rounded-xl border border-orange-200 p-4 mb-6">
-                  <div className="text-xs font-medium text-orange-800 mb-2">その他広告費の内訳</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {data.overheadItems.map(item => (
-                      <div key={item.name} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
-                        <span className="text-xs text-gray-600">{item.name}</span>
-                        <span className="text-sm font-medium text-gray-900">{yen(item.amount)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-orange-700 mt-2">
-                    これらは特定の流入元に紐づかないため、下の流入元別テーブルには含まれません。
-                  </p>
+              {data.costIsEstimated && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 text-xs text-amber-800">
+                  広告費は流入元ごとにしか把握できないため、この表の広告費・CPAは応募数の比率で按分した概算です。実額は集計軸を「流入元」にし、絞り込みを解除すると表示されます。
                 </div>
               )}
 
-              {!showOverhead && <div className="mb-6" />}
-
-              {/* 流入元別テーブル */}
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-sm font-semibold text-gray-700">流入元別 歩留まり・CPA</h2>
-                  <span className="text-xs text-gray-400">広告費未入力の媒体はCPAが「-」になります</span>
-                </div>
+              {/* 明細テーブル */}
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">流入元</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">応募</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">接触</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">面接実施</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">入社</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">入社率</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">広告費</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">応募CPA</th>
-                        <th className="text-right px-3 py-2 text-xs font-medium text-gray-500 bg-green-50">入社CPA</th>
+                      <tr className="text-left text-xs text-gray-500">
+                        <th className="px-4 py-3 font-medium">{GROUP_LABELS[data.groupBy]}</th>
+                        <th className="px-4 py-3 font-medium text-right">応募</th>
+                        <th className="px-4 py-3 font-medium text-right">接触</th>
+                        <th className="px-4 py-3 font-medium text-right">接触率</th>
+                        <th className="px-4 py-3 font-medium text-right">面接設定</th>
+                        <th className="px-4 py-3 font-medium text-right">面接完了</th>
+                        <th className="px-4 py-3 font-medium text-right">入社</th>
+                        <th className="px-4 py-3 font-medium text-right">入社率</th>
+                        <th className="px-4 py-3 font-medium text-right">広告費</th>
+                        <th className="px-4 py-3 font-medium text-right">CPA(応募)</th>
+                        <th className="px-4 py-3 font-medium text-right">CPA(入社)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {data.byInflow.map(row => (
-                        <tr key={row.inflow} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-gray-900 font-medium">{row.inflow}</td>
-                          <td className="px-3 py-2 text-right font-bold text-gray-900">{row.apply}</td>
-                          <td className="px-3 py-2 text-right text-blue-600">{row.contact}</td>
-                          <td className="px-3 py-2 text-right text-purple-600">{row.interviewDone}</td>
-                          <td className="px-3 py-2 text-right font-bold text-green-600">{row.hired}</td>
-                          <td className="px-3 py-2 text-right text-gray-500">{rate(row.hired, row.apply)}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{yen(row.adCost)}</td>
-                          <td className="px-3 py-2 text-right text-blue-700">{yen(row.cpaApply)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-green-700 bg-green-50">{yen(row.cpaHire)}</td>
+                    <tbody>
+                      {data.rows.map(r => (
+                        <tr key={r.key} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.key}</td>
+                          <td className="px-4 py-3 text-right">{r.apply.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{r.contact.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{r.contactRate}%</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{r.interviewSet.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{r.interviewDone.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right font-medium text-gray-800">{r.hired.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{r.hireRate}%</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{yen(r.adCost)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{yen(r.cpaApply)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{yen(r.cpaHire)}</td>
                         </tr>
                       ))}
+                      {data.rows.length === 0 && (
+                        <tr>
+                          <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-400">
+                            該当するデータがありません
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
-                    <tfoot className="bg-gray-50 border-t border-gray-200">
-                      <tr>
-                        <td className="px-3 py-2 text-xs font-medium text-gray-500">媒体直課 合計</td>
-                        <td className="px-3 py-2 text-right font-bold text-gray-900">{o?.apply ?? 0}</td>
-                        <td className="px-3 py-2 text-right font-bold text-blue-700">{o?.contact ?? 0}</td>
-                        <td className="px-3 py-2 text-right font-bold text-purple-700">{o?.interviewDone ?? 0}</td>
-                        <td className="px-3 py-2 text-right font-bold text-green-700">{o?.hired ?? 0}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{rate(o?.hired ?? 0, o?.apply ?? 0)}</td>
-                        <td className="px-3 py-2 text-right font-bold text-gray-900">{yen(data.directAdCost)}</td>
-                        <td className="px-3 py-2 text-right text-blue-700">
-                          {o && o.apply > 0 && data.directAdCost > 0 ? yen(Math.round(data.directAdCost / o.apply)) : "-"}
-                        </td>
-                        <td className="px-3 py-2 text-right font-bold text-green-700 bg-green-50">
-                          {o && o.hired > 0 && data.directAdCost > 0 ? yen(Math.round(data.directAdCost / o.hired)) : "-"}
-                        </td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
-                <p className="text-xs text-gray-400 mt-3">
-                  ※ この表の広告費は媒体直課分のみです。配賦対象外の費用（{yen(data.overheadAdCost)}）は含まれません。上部の「全体 応募CPA／入社CPA」は配賦対象外も含めた全体広告費で算出しています。
-                </p>
               </div>
             </>
           )}
