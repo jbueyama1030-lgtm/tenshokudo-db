@@ -3,6 +3,9 @@
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 
+type Link = { href: string; label: string }
+type Section = { title: string; links: Link[] }
+
 export default function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname()
   const [roles, setRoles] = useState<string[]>([])
@@ -32,49 +35,41 @@ export default function Sidebar({ userName }: { userName?: string }) {
   const isMarketer = roles.includes("marketer")
   const isAdmin = roles.includes("admin")
 
-  // 全ロール共通
-  const commonLinks = [
-    { href: "/dashboard", label: "📊 ダッシュボード" },
-    { href: "/companies", label: "🏢 企業一覧" },
-  ]
+  const canSales = isSales || isAdmin
+  const canProduction = !isAgency && (isProduction || isAdmin)
+  const canMarketer = !isAgency && (isMarketer || isAdmin)
+  const canAdmin = !isAgency && isAdmin
 
-  // 営業・管理者のみ
-  const salesLinks = [
-    { href: "/companies/new", label: "➕ 企業追加" },
-  ]
-
-  // 制作・管理者のみ
-  const productionLinks = [
-    { href: "/production", label: "🎨 制作ダッシュボード" },
-  ]
-
-  // マーケター・管理者のみ（インポート系＋マーケ分析）
-  const marketerLinks = [
-    { href: "/companies/import", label: "📥 CSVインポート" },
-    { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
-    { href: "/companies/import-monthly", label: "📈 月次インポート" },
-    { href: "/import/applications", label: "📥 応募明細インポート" },
-    { href: "/import/ad-costs", label: "💰 広告費インポート" },
-    { href: "/marketing", label: "📊 マーケ分析" },
-    { href: "/marketing/budget", label: "🎯 かけて良い広告費" },
-    { href: "/marketing/ad-costs", label: "💰 広告費入力" },
-    { href: "/marketing/area", label: "🗾 エリア別分析" },
-    { href: "/marketing/cross", label: "🔀 エリア×媒体" },
-    { href: "/marketing/trend", label: "📈 月次トレンド" },
-  ]
-
-  // 管理者のみ
-  const adminOnlyLinks = [
-    { href: "/users", label: "👥 ユーザー管理" },
-  ]
-
-  const links = [
-    ...commonLinks,
-    ...(isSales || isAdmin ? salesLinks : []),
-    ...(!isAgency && (isProduction || isAdmin) ? productionLinks : []),
-    ...(!isAgency && (isMarketer || isAdmin) ? marketerLinks : []),
-    ...(!isAgency && isAdmin ? adminOnlyLinks : []),
-  ]
+  const sections: Section[] = [
+    {
+      title: "メニュー",
+      links: [
+        { href: "/dashboard", label: "📊 ダッシュボード" },
+        { href: "/companies", label: "🏢 企業一覧" },
+        ...(canSales ? [{ href: "/companies/new", label: "➕ 企業追加" }] : []),
+        ...(canProduction ? [{ href: "/production", label: "🎨 制作ダッシュボード" }] : []),
+      ],
+    },
+    {
+      title: "分析",
+      links: canMarketer ? [
+        { href: "/marketing", label: "📊 マーケ分析" },
+        { href: "/marketing/trend", label: "📈 月次トレンド" },
+        { href: "/marketing/budget", label: "🎯 かけて良い広告費" },
+      ] : [],
+    },
+    {
+      title: "データ管理",
+      links: [
+        ...(canMarketer ? [
+          { href: "/import/applications", label: "📥 応募明細インポート" },
+          { href: "/import/ad-costs", label: "💰 広告費インポート" },
+          { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
+        ] : []),
+        ...(canAdmin ? [{ href: "/users", label: "👥 ユーザー管理" }] : []),
+      ],
+    },
+  ].filter(s => s.links.length > 0)
 
   const exactOnly = ["/companies", "/marketing"]
 
@@ -85,22 +80,26 @@ export default function Sidebar({ userName }: { userName?: string }) {
         <div className="text-xs text-white/30 mt-0.5">営業DB</div>
       </div>
       <nav className="flex-1 py-4 overflow-y-auto">
-        <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">メニュー</div>
-        {links.map(link => {
-          const isActive = pathname === link.href || (exactOnly.includes(link.href) ? false : pathname.startsWith(link.href + "/"))
-          return (
-            <a
-              key={link.href}
-              href={link.href}
-              className={"flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors " + (isActive ? "text-white border-[#378ADD] bg-[#378ADD]/10" : "text-white/45 hover:text-white/75 hover:bg-white/5 border-transparent")}
-            >
-              <span>{link.label}</span>
-              {link.href === "/production" && unassignedCount > 0 && (
-                <span className="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">{unassignedCount}</span>
-              )}
-            </a>
-          )
-        })}
+        {sections.map((section, si) => (
+          <div key={section.title} className={si > 0 ? "mt-5" : ""}>
+            <div className="px-5 pb-2 text-[10px] text-white/25 uppercase tracking-widest">{section.title}</div>
+            {section.links.map(link => {
+              const isActive = pathname === link.href || (exactOnly.includes(link.href) ? false : pathname.startsWith(link.href + "/"))
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className={"flex items-center gap-2.5 px-5 py-2 text-sm border-l-2 transition-colors " + (isActive ? "text-white border-[#378ADD] bg-[#378ADD]/10" : "text-white/45 hover:text-white/75 hover:bg-white/5 border-transparent")}
+                >
+                  <span>{link.label}</span>
+                  {link.href === "/production" && unassignedCount > 0 && (
+                    <span className="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">{unassignedCount}</span>
+                  )}
+                </a>
+              )
+            })}
+          </div>
+        ))}
       </nav>
       <div className="px-5 py-4 border-t border-white/10 flex items-center gap-2.5">
         {userName && (
