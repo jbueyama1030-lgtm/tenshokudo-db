@@ -36,7 +36,11 @@ export async function POST(req: Request) {
   // --- CSV取得 ---
   let csvText: string
   try {
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = {
+      // プログラムからのアクセスがUser-Agentで弾かれることがあるため明示する
+      "User-Agent": "Mozilla/5.0 (compatible; TenshokudoDB/1.0)",
+      "Accept": "text/csv,application/octet-stream,*/*",
+    }
     const user = process.env.ENTRY_CSV_USER
     const pass = process.env.ENTRY_CSV_PASS
     if (user && pass) {
