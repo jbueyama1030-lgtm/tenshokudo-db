@@ -57,6 +57,10 @@ type GroupBy = "inflow" | "area" | "entryType"
  * 絞り込み: year, month, area, entryType, inflow
  * 集計軸  : groupBy = inflow | area | entryType
  *
+ * 【UU（実人数）】
+ * 電話番号ハッシュの distinct 件数。同一人物の複数応募を名寄せする。
+ * 電話番号が無い応募は UU に数えられないため、応募数より必ず少なくなる。
+ *
  * 【広告費の扱い】
  * 広告費は「流入元 × 月」の単位でしか持っていない。
  * そのため絞り込みをかけた場合や、エリア・種別で集計する場合は、
@@ -106,6 +110,7 @@ export async function GET(req: Request) {
     filters: { area: areaFilter, entryType: entryTypeFilter, inflow: inflowFilter },
     options: { areas: [], entryTypes: [], inflows: [] },
     overall: emptyFunnel(),
+    overallUu: 0,
     rows: [],
     overallAdCost: 0,
     directAdCost: 0,
@@ -125,6 +130,7 @@ export async function GET(req: Request) {
       status: true,
       inflow: true,
       entryType: true,
+      phoneHash: true,
       company: { select: { address: true } },
     },
   })
@@ -190,11 +196,11 @@ export async function GET(req: Request) {
 
   // --- 集計 ---
   const overall = emptyFunnel()
+  const overallUuSet = new Set<string>()
   const groupMap: Record<string, Funnel> = {}
+  const uuByGroup: Record<string, Set<string>> = {}
   // 按分のため「グループ × 流入元」の応募数も数える
   const applyByGroupInflow: Record<string, Record<string, number>> = {}
-  // 絞り込み後の流入別応募数（絞り込み前との比で按分する）
-  const applyByInflowFiltered: Record<string, number> = {}
 
   const keyOf = (r: typeof records[number]): string => {
     if (groupBy === "area") return extractPref(r.company?.address ?? null)
@@ -204,13 +210,17 @@ export async function GET(req: Request) {
 
   for (const r of filtered) {
     addToFunnel(overall, r.status)
+    if (r.phoneHash) overallUuSet.add(r.phoneHash)
+
     const key = keyOf(r)
     if (!groupMap[key]) groupMap[key] = emptyFunnel()
     addToFunnel(groupMap[key], r.status)
 
+    if (!uuByGroup[key]) uuByGroup[key] = new Set<string>()
+    if (r.phoneHash) uuByGroup[key].add(r.phoneHash)
+
     if (!applyByGroupInflow[key]) applyByGroupInflow[key] = {}
     applyByGroupInflow[key][r.inflow] = (applyByGroupInflow[key][r.inflow] ?? 0) + 1
-    applyByInflowFiltered[r.inflow] = (applyByInflowFiltered[r.inflow] ?? 0) + 1
   }
 
   // 按分が発生するか：流入元で集計 かつ 絞り込み無し のときだけ実額
@@ -241,11 +251,17 @@ export async function GET(req: Request) {
         adCost = hasAny ? Math.round(sum) : null
       }
 
+      const uu = uuByGroup[key]?.size ?? 0
+
       return {
         key,
         ...f,
+        uu,
+        // 延べ応募がUUの何倍か（同じ人が繰り返し応募している度合い）
+        uuRatio: uu > 0 ? Number((f.apply / uu).toFixed(2)) : null,
         adCost,
         cpaApply: adCost != null && f.apply > 0 ? Math.round(adCost / f.apply) : null,
+        cpaUu: adCost != null && uu > 0 ? Math.round(adCost / uu) : null,
         cpaHire: adCost != null && f.hired > 0 ? Math.round(adCost / f.hired) : null,
         contactRate: f.apply > 0 ? Number(((f.contact / f.apply) * 100).toFixed(1)) : 0,
         hireRate: f.apply > 0 ? Number(((f.hired / f.apply) * 100).toFixed(2)) : 0,
@@ -266,6 +282,7 @@ export async function GET(req: Request) {
     filters: { area: areaFilter, entryType: entryTypeFilter, inflow: inflowFilter },
     options,
     overall,
+    overallUu: overallUuSet.size,
     rows,
     overallAdCost,
     directAdCost,

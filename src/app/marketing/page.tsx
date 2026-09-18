@@ -9,8 +9,11 @@ type Row = {
   interviewSet: number
   interviewDone: number
   hired: number
+  uu: number
+  uuRatio: number | null
   adCost: number | null
   cpaApply: number | null
+  cpaUu: number | null
   cpaHire: number | null
   contactRate: number
   hireRate: number
@@ -25,6 +28,7 @@ type Data = {
   overall: {
     apply: number; contact: number; interviewSet: number; interviewDone: number; hired: number
   }
+  overallUu: number
   rows: Row[]
   overallAdCost: number
   directAdCost: number
@@ -40,6 +44,7 @@ const GROUP_LABELS: Record<string, string> = {
 }
 
 const yen = (v: number | null) => (v == null ? "—" : "¥" + v.toLocaleString("ja-JP"))
+const num = (v: number) => v.toLocaleString("ja-JP")
 
 export default function MarketingPage() {
   const [userName, setUserName] = useState("")
@@ -186,18 +191,28 @@ export default function MarketingPage() {
           {!loading && data && (
             <>
               {/* サマリー */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">応募（延べ）</div>
+                  <div className="text-2xl font-bold text-gray-800">{num(o?.apply ?? 0)}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 mb-1">UU（実人数）</div>
+                  <div className="text-2xl font-bold text-gray-800">{num(data.overallUu)}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {data.overallUu > 0 ? "×" + ((o?.apply ?? 0) / data.overallUu).toFixed(2) : ""}
+                  </div>
+                </div>
                 {[
-                  { label: "応募", value: o?.apply ?? 0, sub: "" },
-                  { label: "接触", value: o?.contact ?? 0, sub: rate(o?.contact ?? 0, o?.apply ?? 0) },
-                  { label: "面接設定", value: o?.interviewSet ?? 0, sub: rate(o?.interviewSet ?? 0, o?.apply ?? 0) },
-                  { label: "面接完了", value: o?.interviewDone ?? 0, sub: rate(o?.interviewDone ?? 0, o?.apply ?? 0) },
-                  { label: "入社", value: o?.hired ?? 0, sub: rate(o?.hired ?? 0, o?.apply ?? 0) },
+                  { label: "接触", value: o?.contact ?? 0 },
+                  { label: "面接設定", value: o?.interviewSet ?? 0 },
+                  { label: "面接完了", value: o?.interviewDone ?? 0 },
+                  { label: "入社", value: o?.hired ?? 0 },
                 ].map(c => (
                   <div key={c.label} className="bg-white rounded-xl border border-gray-200 p-4">
                     <div className="text-xs text-gray-500 mb-1">{c.label}</div>
-                    <div className="text-2xl font-bold text-gray-800">{c.value.toLocaleString("ja-JP")}</div>
-                    {c.sub && <div className="text-xs text-gray-400 mt-0.5">{c.sub}</div>}
+                    <div className="text-2xl font-bold text-gray-800">{num(c.value)}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{rate(c.value, o?.apply ?? 0)}</div>
                   </div>
                 ))}
               </div>
@@ -242,7 +257,8 @@ export default function MarketingPage() {
                       <tr className="text-left text-xs text-gray-500">
                         <th className="px-4 py-3 font-medium">{GROUP_LABELS[data.groupBy]}</th>
                         <th className="px-4 py-3 font-medium text-right">応募</th>
-                        <th className="px-4 py-3 font-medium text-right">接触</th>
+                        <th className="px-4 py-3 font-medium text-right">UU</th>
+                        <th className="px-4 py-3 font-medium text-right">延べ/UU</th>
                         <th className="px-4 py-3 font-medium text-right">接触率</th>
                         <th className="px-4 py-3 font-medium text-right">面接設定</th>
                         <th className="px-4 py-3 font-medium text-right">面接完了</th>
@@ -250,6 +266,7 @@ export default function MarketingPage() {
                         <th className="px-4 py-3 font-medium text-right">入社率</th>
                         <th className="px-4 py-3 font-medium text-right">広告費</th>
                         <th className="px-4 py-3 font-medium text-right">CPA(応募)</th>
+                        <th className="px-4 py-3 font-medium text-right">CPA(UU)</th>
                         <th className="px-4 py-3 font-medium text-right">CPA(入社)</th>
                       </tr>
                     </thead>
@@ -257,21 +274,25 @@ export default function MarketingPage() {
                       {data.rows.map(r => (
                         <tr key={r.key} className="border-b border-gray-100 hover:bg-gray-50">
                           <td className="px-4 py-3 font-medium text-gray-800">{r.key}</td>
-                          <td className="px-4 py-3 text-right">{r.apply.toLocaleString("ja-JP")}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">{r.contact.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right">{num(r.apply)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{num(r.uu)}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">
+                            {r.uuRatio != null ? "×" + r.uuRatio.toFixed(2) : "—"}
+                          </td>
                           <td className="px-4 py-3 text-right text-gray-500">{r.contactRate}%</td>
-                          <td className="px-4 py-3 text-right text-gray-600">{r.interviewSet.toLocaleString("ja-JP")}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">{r.interviewDone.toLocaleString("ja-JP")}</td>
-                          <td className="px-4 py-3 text-right font-medium text-gray-800">{r.hired.toLocaleString("ja-JP")}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{num(r.interviewSet)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{num(r.interviewDone)}</td>
+                          <td className="px-4 py-3 text-right font-medium text-gray-800">{num(r.hired)}</td>
                           <td className="px-4 py-3 text-right text-gray-500">{r.hireRate}%</td>
                           <td className="px-4 py-3 text-right text-gray-600">{yen(r.adCost)}</td>
                           <td className="px-4 py-3 text-right text-gray-600">{yen(r.cpaApply)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{yen(r.cpaUu)}</td>
                           <td className="px-4 py-3 text-right text-gray-600">{yen(r.cpaHire)}</td>
                         </tr>
                       ))}
                       {data.rows.length === 0 && (
                         <tr>
-                          <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-400">
+                          <td colSpan={13} className="px-4 py-8 text-center text-sm text-gray-400">
                             該当するデータがありません
                           </td>
                         </tr>
