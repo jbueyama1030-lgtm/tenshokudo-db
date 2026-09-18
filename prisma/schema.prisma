@@ -225,6 +225,10 @@ model ApplicationRecord {
   // TEL応募は流入がほぼ「未設定」になるため、未設定の内訳を把握するのに使う。
   entryType   String?
 
+  // 電話番号のハッシュ（UU＝実人数の名寄せ用）。
+  // ソルト付きSHA-256。電話番号そのものは保存しない（復元不可）。
+  phoneHash   String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -233,6 +237,7 @@ model ApplicationRecord {
   @@index([inflow])
   @@index([sourceCompanyId])
   @@index([entryType])
+  @@index([phoneHash])
 }
 
 model AdCost {

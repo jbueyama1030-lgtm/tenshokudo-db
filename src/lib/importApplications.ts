@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client"
+import { createHash } from "crypto"
 
 /**
  * 応募明細CSVの取り込み。
@@ -7,6 +8,11 @@ import { PrismaClient } from "@prisma/client"
  * CSVに含まれる年月のデータを削除してから入れ直す「洗い替え」。
  * 応募のステータスは後から変わる（未対応→面接設定済み→入社）ため、
  * 追加ではなく置き換えにして常に最新の状態を反映する。
+ *
+ * 【個人情報】
+ * 電話番号は保存しない。ソルト付きSHA-256のハッシュのみ保存し、
+ * UU（実人数）の名寄せにだけ使う。ハッシュから電話番号は復元できない。
+ * ソルトは環境変数 PHONE_HASH_SALT。**変更すると過去のハッシュと突合できなくなる**。
  *
  * 【安全装置】
  * 取り込み後の件数が既存より大幅に減る場合は中断する。
@@ -26,7 +32,8 @@ export type ImportResult = {
   shifted: number
   unmatched: number
   deleted: number
-  aborted?: string   // 中断した場合の理由
+  hashed: number      // 電話番号ハッシュを付与できた件数
+  aborted?: string    // 中断した場合の理由
 }
 
 /** CSVを1行ずつ配列にパース（ダブルクォート対応の簡易パーサ） */
@@ -93,12 +100,32 @@ export function normalizeCompanyId(raw: string): string {
   return s
 }
 
+/**
+ * 電話番号をハッシュ化する。
+ * 全角→半角に直し、数字以外（ハイフン・空白・括弧）を除いてから
+ * ソルトを付けてSHA-256にかける。元の番号は保存しない。
+ * 桁数が明らかに足りないものは null（名寄せに使えないため）。
+ */
+export function hashPhone(raw: string): string | null {
+  if (!raw) return null
+  const salt = process.env.PHONE_HASH_SALT
+  if (!salt) return null
+
+  let s = String(raw).trim()
+  s = s.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+  const digits = s.replace(/\D/g, "")
+  if (digits.length < 9) return null
+
+  return createHash("sha256").update(digits + salt).digest("hex")
+}
+
 type Parsed = {
   sourceCompanyId: string
   appliedAt: Date
   status: string
   inflow: string
   entryType: string | null
+  phoneHash: string | null
   companyRef: string | null
   year: number
   month: number
@@ -114,7 +141,7 @@ export async function importApplicationsCsv(
   options: { skipGuard?: boolean } = {}
 ): Promise<ImportResult> {
   const results: ImportResult = {
-    success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0, deleted: 0,
+    success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0, deleted: 0, hashed: 0,
   }
 
   const parsedCsv = parseCsv(csvText)
@@ -127,8 +154,9 @@ export async function importApplicationsCsv(
   const iCompanyId = header.indexOf("企業ID")
   const iStatus = header.indexOf("ステータス")
   const iInflow = header.indexOf("流入")
-  // 種別は無くても取り込めるようにする（旧CSVとの互換）
+  // 種別・電話番号は無くても取り込めるようにする（旧CSVとの互換）
   const iEntryType = header.indexOf("種別")
+  const iPhone = header.indexOf("電話番号")
 
   if (iDate < 0 || iCompanyId < 0 || iStatus < 0 || iInflow < 0) {
     return { ...results, aborted: "必要な列（応募日 / 企業ID / ステータス / 流入）が見つかりません" }
@@ -152,6 +180,7 @@ export async function importApplicationsCsv(
     const status = (r[iStatus] ?? "").trim()
     const inflow = (r[iInflow] ?? "").trim() || "未設定"
     const entryType = iEntryType >= 0 ? ((r[iEntryType] ?? "").trim() || null) : null
+    const phoneHash = iPhone >= 0 ? hashPhone((r[iPhone] ?? "").trim()) : null
     const appliedAt = parseAppliedAt(rawDate)
 
     if (!rawDate || !sourceCompanyId || !appliedAt) { results.skip++; continue }
@@ -162,8 +191,9 @@ export async function importApplicationsCsv(
 
     const companyRef = companyMap[sourceCompanyId] ?? null
     if (!companyRef) results.unmatched++
+    if (phoneHash) results.hashed++
 
-    parsed.push({ sourceCompanyId, appliedAt, status, inflow, entryType, companyRef, year, month })
+    parsed.push({ sourceCompanyId, appliedAt, status, inflow, entryType, phoneHash, companyRef, year, month })
   }
 
   if (parsed.length === 0) {
@@ -220,6 +250,7 @@ export async function importApplicationsCsv(
           status: p.status,
           inflow: p.inflow,
           entryType: p.entryType,
+          phoneHash: p.phoneHash,
         })),
         skipDuplicates: true,
       })
