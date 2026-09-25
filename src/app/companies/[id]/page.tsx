@@ -595,6 +595,8 @@ export default function CompanyDetailPage() {
                 {canReferral && (
                   <button onClick={() => setEditMode("referral")} className={"px-4 py-2 rounded-lg text-sm font-medium " + (canFull ? "border border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 text-white hover:bg-emerald-700")}>🤝 紹介情報を編集</button>
                 )}
+                {/* 採用レポート（閲覧できる人なら誰でも） */}
+                <button onClick={() => router.push("/companies/" + id + "/report")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">📊 採用レポート</button>
                 {canDelete && (
                   <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
                 )}
