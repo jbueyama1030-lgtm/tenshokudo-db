@@ -22,6 +22,8 @@ export const STAGE_HIRED = ["入社"]
 export const STATUS_REJECTED = "不採用"
 /** 別枠：問い合わせのみ（応募数には含める） */
 export const STATUS_INQUIRY_ONLY = "問い合わせのみ"
+/** 応募種別：電話での応募（実績欄で内訳として別表示する） */
+export const ENTRY_TYPE_TEL = "TEL応募"
 
 /** 比較対象がこの社数未満なら比較を出さない */
 export const MIN_COMPARISON_COMPANIES = 5
@@ -102,6 +104,15 @@ export type CompanyFunnelReport = {
     uuCoverage: number | null
     rates: FunnelRates
     applyPerUu: number | null
+    /** 応募の内訳（表示用。歩留まりの計算は応募全体のまま） */
+    entryBreakdown: {
+      /** TEL応募 */
+      tel: number
+      /** TEL以外（一般・代理・会員応募） */
+      web: number
+      /** 種別が未記録（古いCSVで取り込んだ行） */
+      unknown: number
+    }
     /** ステータス別の生件数（検算・デバッグ用） */
     statusBreakdown: Record<string, number>
   }
@@ -274,7 +285,7 @@ export async function analyzeCompanyFunnel(
 
   // ---------------- 自社 ----------------
 
-  const [ownStatusRows, ownUuMonthly, ownUuTotalRows] = await Promise.all([
+  const [ownStatusRows, ownUuMonthly, ownUuTotalRows, ownEntryRows] = await Promise.all([
     prisma.applicationRecord.groupBy({
       by: ["year", "month", "status"],
       where: { AND: [periodWhere(period), { companyRef: company.id }] },
@@ -294,6 +305,11 @@ export async function analyzeCompanyFunnel(
       WHERE "companyRef" = ${company.id}
         AND ("year" * 100 + "month") BETWEEN ${fromKey} AND ${toKey}
     `,
+    prisma.applicationRecord.groupBy({
+      by: ["entryType"],
+      where: { AND: [periodWhere(period), { companyRef: company.id }] },
+      _count: { _all: true },
+    }),
   ])
 
   const totalCounts = emptyCounts()
@@ -315,6 +331,14 @@ export async function analyzeCompanyFunnel(
   const ownUu = Number(ownUuTotalRows[0]?.uu ?? 0)
   const withPhone = Number(ownUuTotalRows[0]?.withPhone ?? 0)
   const uuCoverage = div(withPhone, totalCounts.apply)
+
+  const entryBreakdown = { tel: 0, web: 0, unknown: 0 }
+  for (const r of ownEntryRows) {
+    const n = r._count._all
+    if (r.entryType === ENTRY_TYPE_TEL) entryBreakdown.tel += n
+    else if (r.entryType) entryBreakdown.web += n
+    else entryBreakdown.unknown += n
+  }
 
   const monthly: MonthlyPoint[] = months.map(ym => {
     const counts = monthlyCounts.get(ymKey(ym)) ?? emptyCounts()
@@ -448,6 +472,7 @@ export async function analyzeCompanyFunnel(
       uuCoverage,
       rates: ratesOf(totalCounts),
       applyPerUu: div(totalCounts.apply, ownUu),
+      entryBreakdown,
       statusBreakdown,
     },
     monthly,

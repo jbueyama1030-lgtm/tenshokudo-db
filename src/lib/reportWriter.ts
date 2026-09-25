@@ -77,6 +77,10 @@ function buildFacts(r: CompanyFunnelReport): string {
   lines.push("")
   lines.push("【御社の実績】")
   lines.push(`応募 ${c.apply}件${uuOk ? `（実人数 ${r.total.uu}人）` : ""}`)
+  const eb = r.total.entryBreakdown
+  const ebParts = [`Web応募 ${eb.web}件`, `TEL応募 ${eb.tel}件`]
+  if (eb.unknown > 0) ebParts.push(`種別不明 ${eb.unknown}件`)
+  lines.push(`応募の内訳: ${ebParts.join(" / ")}`)
   lines.push(`面接設定 ${c.interviewSet}件 / 面接実施 ${c.interviewDone}件 / 入社 ${c.hired}件`)
   if (c.inquiryOnly > 0) lines.push(`応募のうち問い合わせのみ ${c.inquiryOnly}件`)
   if (c.rejected > 0) lines.push(`不採用 ${c.rejected}件（面接前後の判別不可）`)
