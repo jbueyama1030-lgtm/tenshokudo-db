@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { isInAgencyScope } from "@/lib/permissions"
 import {
   analyzeCompanyFunnel,
+  addMonths,
+  currentYmJst,
   periodEndingAt,
   ymKey,
   type Period,
@@ -35,9 +37,10 @@ function monthsBetween(p: Period): number {
  *
  * クエリ:
  *   from=YYYY-MM, to=YYYY-MM（どちらも省略可）
- *   - 両方省略 → データがある最新月までの直近6ヶ月
+ *   - 両方省略 → 先月までの直近6ヶ月（集計途中の今月は含めない）
  *   - to のみ  → to までの直近6ヶ月
- *   - from のみ → from から最新月まで
+ *   - from のみ → from から先月まで
+ *   ※データが先月まで無い場合は、データがある最新月を終端にする
  *
  * 権限: その企業を閲覧できる人なら誰でも（代理店ユーザー含む）。
  * 比較値は全社の匿名集計なので、個社名は一切返さない。
@@ -70,9 +73,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "期間は YYYY-MM 形式で指定してください" }, { status: 400 })
   }
 
-  // 最新月は全社データ基準（比較対象と期間を揃えるため）
-  let latest: YearMonth | null = null
-  if (!toParam) {
+  let to: YearMonth
+  if (toParam) {
+    to = toParam
+  } else {
+    // 既定の終端 = 先月。ただしデータがそこまで無ければデータの最新月
     const last = await prisma.applicationRecord.findFirst({
       select: { year: true, month: true },
       orderBy: [{ year: "desc" }, { month: "desc" }],
@@ -80,10 +85,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!last) {
       return NextResponse.json({ error: "応募データがありません" }, { status: 404 })
     }
-    latest = { year: last.year, month: last.month }
+    const lastMonth = addMonths(currentYmJst(), -1)
+    const latestData: YearMonth = { year: last.year, month: last.month }
+    to = ymKey(latestData) < ymKey(lastMonth) ? latestData : lastMonth
   }
 
-  const to = toParam ?? latest!
   const period: Period = fromParam ? { from: fromParam, to } : periodEndingAt(to, DEFAULT_MONTHS)
 
   if (ymKey(period.from) > ymKey(period.to)) {

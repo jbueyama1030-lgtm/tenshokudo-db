@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
+import { addMonths, currentYmJst, ymKey } from "@/lib/funnelAnalysis"
 import type { CompanyFunnelReport, Comparison, FunnelRates } from "@/lib/funnelAnalysis"
 
 // =====================================================================
@@ -21,7 +22,7 @@ const SECTIONS = [
   { key: "strengths", title: "強み", maxChars: 80, needsComparison: true,
     instruction: "比較対象の平均を上回っている段階を挙げる。上回っている点が無ければ、比較的良い点を1つ挙げる。" },
   { key: "issues", title: "課題と次の打ち手", maxChars: 120, needsComparison: true,
-    instruction: "比較対象の平均を下回っている段階を挙げ、改善の方向性を1つ提案する。原因は断定しない。" },
+    instruction: "比較対象の平均を下回っている段階を挙げ、改善の方向性を1つ提案する。原因は断定しない。選考中の応募者を含む月の影響がありうる場合はその旨に触れる。" },
 ] as const
 
 type SectionKey = (typeof SECTIONS)[number]["key"]
@@ -105,6 +106,16 @@ function buildFacts(r: CompanyFunnelReport): string {
   }
   lines.push("")
 
+  // 選考中の応募が含まれる月（AIが「入社が少ない」と断定しないように伝える）
+  const lastMonth = addMonths(currentYmJst(), -1)
+  if (r.inProgressMonth) {
+    lines.push(`注意: ${r.inProgressMonth.year}年${r.inProgressMonth.month}月は集計途中の月で、選考中の応募者が多く含まれる。面接・入社の件数は今後増える見込み。`)
+    lines.push("")
+  } else if (ymKey(r.period.to) >= ymKey(lastMonth)) {
+    lines.push(`注意: ${r.period.to.year}年${r.period.to.month}月の応募には選考中の応募者が含まれる可能性がある。入社までの率は今後上がることがある。`)
+    lines.push("")
+  }
+
   lines.push("【月別】")
   for (const m of r.monthly) {
     lines.push(
@@ -147,6 +158,7 @@ const SYSTEM_PROMPT = `あなたは、タクシー業界専門の求人媒体「
 - 読み手は顧客企業の採用担当者です。「御社」と呼び、です・ます調で書いてください。
 - 他社の企業名や、個別企業を推測させる表現は使わないでください。
 - 原因は断定せず、「〜の可能性があります」「〜が考えられます」と書いてください。
+- 直近の月には選考結果が出ていない応募者が含まれます。【事実】に「注意」がある場合は、面接実施や入社の件数・率の低さを確定した弱点として書かず、「選考中の応募者を含むため今後変動する可能性があります」という前提を添えてください。
 - 各セクションは指定の文字数以内で、箇条書きや記号を使わず文章で書いてください。
 - 出力は指定されたキーだけを持つJSONオブジェクトのみです。前置きやコードブロックは付けないでください。`
 

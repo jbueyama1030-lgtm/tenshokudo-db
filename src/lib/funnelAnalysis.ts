@@ -93,6 +93,8 @@ export type CompanyFunnelReport = {
   }
   period: Period
   generatedAt: string
+  /** 期間に集計途中の月（今月）が含まれるか。含まれる月を返す */
+  inProgressMonth: YearMonth | null
   total: {
     counts: FunnelCounts
     uu: number
@@ -120,10 +122,21 @@ export function ymKey(ym: YearMonth): number {
   return ym.year * 100 + ym.month
 }
 
+/** 日本時間での今月 */
+export function currentYmJst(now: Date = new Date()): YearMonth {
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  return { year: jst.getUTCFullYear(), month: jst.getUTCMonth() + 1 }
+}
+
+/** n ヶ月ずらした年月（n が負なら過去） */
+export function addMonths(ym: YearMonth, n: number): YearMonth {
+  const total = ym.year * 12 + (ym.month - 1) + n
+  return { year: Math.floor(total / 12), month: (total % 12) + 1 }
+}
+
 /** to を終端とする months ヶ月分の期間 */
 export function periodEndingAt(to: YearMonth, months: number): Period {
-  const total = to.year * 12 + (to.month - 1) - (months - 1)
-  return { from: { year: Math.floor(total / 12), month: (total % 12) + 1 }, to }
+  return { from: addMonths(to, -(months - 1)), to }
 }
 
 export function monthsInPeriod(p: Period): YearMonth[] {
@@ -253,6 +266,11 @@ export async function analyzeCompanyFunnel(
   const fromKey = ymKey(period.from)
   const toKey = ymKey(period.to)
   const months = monthsInPeriod(period)
+
+  // 集計途中の月（今月）が期間に含まれるか
+  const nowYm = currentYmJst()
+  const inProgressMonth =
+    ymKey(nowYm) >= fromKey && ymKey(nowYm) <= toKey ? nowYm : null
 
   // ---------------- 自社 ----------------
 
@@ -386,6 +404,16 @@ export async function analyzeCompanyFunnel(
   // ---------------- 注記（固定文） ----------------
 
   const notes: string[] = []
+  if (inProgressMonth) {
+    notes.push(
+      `${inProgressMonth.year}年${inProgressMonth.month}月は集計途中です。選考中の応募者が含まれるため、面接・入社の件数と率は今後増える可能性があります。`,
+    )
+  } else if (toKey >= ymKey(addMonths(nowYm, -1))) {
+    // 先月までの期間でも、先月の応募はまだ選考中のことが多い
+    notes.push(
+      `${period.to.year}年${period.to.month}月の応募には選考中のものが含まれる可能性があり、入社までの率は今後上がることがあります。`,
+    )
+  }
   if (totalCounts.inquiryOnly > 0) {
     notes.push(
       `応募${totalCounts.apply}件のうち${totalCounts.inquiryOnly}件は「問い合わせのみ」です（応募数に含めています）。`,
@@ -413,6 +441,7 @@ export async function analyzeCompanyFunnel(
     },
     period,
     generatedAt: new Date().toISOString(),
+    inProgressMonth,
     total: {
       counts: totalCounts,
       uu: ownUu,
