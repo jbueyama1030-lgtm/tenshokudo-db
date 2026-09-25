@@ -139,6 +139,9 @@ model Company {
   // 契約期間（契約中/解約/再契約それぞれ1本）
   contractPeriods ContractPeriod[]
 
+  // 転職道の掲載記事（管理画面の記事CSVから取り込み。1社1記事）
+  jobArticle JobArticle?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -319,4 +322,70 @@ model Agency {
 
   users     User[]
   companies Company[]
+}
+
+// =====================================================================
+// 転職道の掲載記事（管理画面の記事CSVを取り込む。1社1記事＝企業IDで一意）
+// =====================================================================
+model JobArticle {
+  id              String   @id @default(cuid())
+
+  // 転職道側の企業ID（CSVの「企業ID」）。Company.companyId と同じ値
+  sourceCompanyId String   @unique
+  // 紐づく企業（DBに未登録の企業IDなら null）
+  companyRef      String?  @unique
+  company         Company? @relation(fields: [companyRef], references: [id])
+
+  name            String
+  prefecture      String?          // CSV「エリア」
+  city            String?          // CSV「エリア2」
+  title           String?  @db.Text
+
+  // 特徴フラグのうち「1」になっている項目名（例: ["寮完備", "給与保障"]）
+  features        String[] @default([])
+  imageCount      Int      @default(0)
+  videoCount      Int      @default(0)
+
+  planType1       String?          // CSV「掲載プラン1」
+  planType2       String?          // CSV「掲載プラン2」
+  priceRank       String?          // CSV「単価ランク」
+  // 記事評価（スカウトポイント・教育レベル等の1〜5）
+  scores          Json?
+
+  // 求人ページの更新日時（転職道側）
+  pageUpdatedAt   DateTime?
+
+  // 最新の取り込みに含まれていたか（CSVは公開中の記事のみ。消えたら掲載終了扱い）
+  isListed        Boolean  @default(true)
+  delistedAt      DateTime?
+
+  // 記事内容のハッシュ（変更検出用。SEO設定や並び順など中身に関係ない列は除外）
+  contentHash     String
+  // CSVの全列（列名 → 値）。重複する列名は「雇用形態(2)」のように区別
+  data            Json
+
+  lastImportedAt  DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  snapshots       JobArticleSnapshot[]
+
+  @@index([prefecture])
+  @@index([isListed])
+  
+}
+
+// 記事内容の履歴。取り込み時に内容が変わった（または新規の）記事だけ1行追加する
+model JobArticleSnapshot {
+  id            String     @id @default(cuid())
+  articleId     String
+  article       JobArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  contentHash   String
+  // 中身に関係する列だけ（SEO設定・並び順・ブログ等は除外）
+  content       Json
+  pageUpdatedAt DateTime?
+  capturedAt    DateTime   @default(now())
+
+  @@index([articleId, capturedAt])
 }
