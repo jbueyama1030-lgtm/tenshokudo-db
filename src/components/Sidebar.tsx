@@ -1,3 +1,4 @@
+// 置き場所: src/components/Sidebar.tsx
 "use client"
 
 import { usePathname } from "next/navigation"
@@ -63,6 +64,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
       links: [
         ...(canMarketer ? [
           { href: "/import/applications", label: "📥 応募明細インポート" },
+          { href: "/import/articles", label: "📰 記事インポート" },
           { href: "/import/ad-costs", label: "💰 広告費インポート" },
           { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
         ] : []),
