@@ -57,6 +57,9 @@ type Report = {
   notes: string[]
 }
 
+type InsightSection = { key: string; title: string; text: string | null; skippedReason: string | null }
+type ReportInsight = { sections: InsightSection[]; model: string | null; generatedAt: string }
+
 // ===== 表示ヘルパー =====
 function pct(v: number | null | undefined, digits = 1): string {
   if (v == null) return "—"
@@ -106,6 +109,10 @@ export default function CompanyReportPage() {
   const [loading, setLoading] = useState(false)
   const [fromInput, setFromInput] = useState("")
   const [toInput, setToInput] = useState("")
+  // AI所見（ボタンを押したときだけ生成。期間を変えたら消す）
+  const [insight, setInsight] = useState<ReportInsight | null>(null)
+  const [insightLoading, setInsightLoading] = useState(false)
+  const [insightError, setInsightError] = useState("")
 
   // from/to を引数で受け取る（state に依存させない＝無限ループ防止）
   const load = async (from: string, to: string) => {
@@ -121,12 +128,32 @@ export default function CompanyReportPage() {
       setReport(null)
     } else {
       setReport(data)
+      setInsight(null)
+      setInsightError("")
       setFromInput(ymValue(data.period.from))
       setToInput(ymValue(data.period.to))
       // 期間をURLに残す（共有・再読込用）
       window.history.replaceState(null, "", `?from=${ymValue(data.period.from)}&to=${ymValue(data.period.to)}`)
     }
     setLoading(false)
+  }
+
+  const generateInsight = async () => {
+    if (!report) return
+    setInsightLoading(true)
+    setInsightError("")
+    const res = await fetch(`/api/companies/${id}/report/insight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: ymValue(report.period.from), to: ymValue(report.period.to) }),
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data) {
+      setInsightError(data?.error ?? "所見の生成に失敗しました")
+    } else {
+      setInsight(data)
+    }
+    setInsightLoading(false)
   }
 
   useEffect(() => {
@@ -186,11 +213,16 @@ export default function CompanyReportPage() {
                 {loading ? "集計中..." : "期間を反映"}
               </button>
               <div className="flex-1" />
+              <button type="button" onClick={generateInsight} disabled={!report || insightLoading}
+                className="px-4 py-2 text-sm border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                {insightLoading ? "所見を生成中..." : insight ? "✨ 所見を作り直す" : "✨ 所見を生成"}
+              </button>
               <button type="button" onClick={() => window.print()} disabled={!report}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 🖨 印刷 / PDF保存
               </button>
             </div>
+            {insightError && <p className="text-xs text-rose-600 mt-2">{insightError}</p>}
             <p className="text-xs text-gray-400 mt-2">
               PDFにするときは、印刷画面の送信先で「PDFに保存」を選び、「ヘッダーとフッター」のチェックを外してください。
             </p>
@@ -321,6 +353,23 @@ export default function CompanyReportPage() {
                   </tbody>
                 </table>
               </section>
+
+              {/* 4. 所見（AI。生成したときだけ表示・印刷） */}
+              {insight && (
+                <section className="report-section mb-8">
+                  <h2 className="text-base font-bold mb-3">所見</h2>
+                  <div className="space-y-3">
+                    {insight.sections.map(sec => (
+                      <div key={sec.key} className="border-l-2 border-gray-900 pl-3">
+                        <h3 className="text-sm font-bold mb-0.5">{sec.title}</h3>
+                        {sec.text
+                          ? <p className="text-sm leading-relaxed">{sec.text}</p>
+                          : <p className="text-xs text-gray-500">{sec.skippedReason}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {/* 注記 */}
               {report.notes.length > 0 && (
