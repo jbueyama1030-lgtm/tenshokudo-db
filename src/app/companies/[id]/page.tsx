@@ -2,395 +2,1309 @@
 import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import ContractPeriods from "@/components/ContractPeriods"
+import {
+  getRoles,
+  canEditCompanyFull,
+  canEditReferralOnly,
+  canDeleteCompany,
+  canCreateTask,
+  isProduction,
+  REFERRAL_FIELDS,
+} from "@/lib/permissions"
 
-// ===== API の返り値（src/lib/funnelAnalysis.ts と同じ形） =====
-type YearMonth = { year: number; month: number }
-type Period = { from: YearMonth; to: YearMonth }
-type FunnelCounts = {
-  apply: number
-  interviewSet: number
-  interviewDone: number
-  hired: number
-  rejected: number
-  inquiryOnly: number
+type CompetitorMedia = { name: string; monthly: number | null; costPerHire: number | null; note: string }
+type Option = { name: string; amount: number }
+type ReferralFee = { condition: string; amount: number | null }
+type MonthlyRecord = {
+  id: string
+  year: number
+  month: number
+  applyCount: number
+  hireCount: number
+  inflowBreakdown: Record<string, number> | null
 }
-type FunnelRates = {
-  applyToSet: number | null
-  setToDone: number | null
-  doneToHire: number | null
-  applyToHire: number | null
-}
-type MonthlyPoint = YearMonth & { counts: FunnelCounts; uu: number; rates: FunnelRates }
-type Comparison =
-  | {
-      available: true
-      label: string
-      companyCount: number
-      totals: FunnelCounts
-      perCompany: FunnelCounts
-      uuTotal: number
-      rates: FunnelRates
-      applyPerUu: number | null
-    }
-  | { available: false; label: string; reason: string }
-type Report = {
-  company: {
-    id: string
-    name: string
-    companyId: string | null
-    prefecture: string
-    vehicleCount: number | null
-    driverCount: number | null
-  }
-  period: Period
-  generatedAt: string
-  total: {
-    counts: FunnelCounts
-    uu: number
-    uuCoverage: number | null
-    rates: FunnelRates
-    applyPerUu: number | null
-    entryBreakdown: { tel: number; web: number; unknown: number }
-    statusBreakdown: Record<string, number>
-  }
-  monthly: MonthlyPoint[]
-  comparisons: { area: Comparison; size: Comparison }
-  notes: string[]
+type DriverSales = {
+  monthlyRevenue?: number
+  annualRevenue?: number
+  shifts?: Record<string, { top?: number; avg?: number }>
 }
 
-type InsightSection = { key: string; title: string; text: string | null; skippedReason: string | null }
-type ReportInsight = { sections: InsightSection[]; model: string | null; generatedAt: string }
-
-// ===== 表示ヘルパー =====
-function pct(v: number | null | undefined, digits = 1): string {
-  if (v == null) return "—"
-  return (v * 100).toFixed(digits) + "%"
-}
-function num(v: number | null | undefined, digits = 0): string {
-  if (v == null) return "—"
-  return v.toLocaleString("ja-JP", { minimumFractionDigits: digits, maximumFractionDigits: digits })
-}
-function ymLabel(ym: YearMonth): string {
-  return `${ym.year}年${ym.month}月`
-}
-function ymValue(ym: YearMonth): string {
-  return `${ym.year}-${String(ym.month).padStart(2, "0")}`
-}
-/** 自社と比較の差（ポイント）。どちらかが null なら null */
-function diffPt(own: number | null, other: number | null): number | null {
-  if (own == null || other == null) return null
-  return (own - other) * 100
+// 契約期間（この画面では年間売上の集計にだけ使う）
+type ContractPeriodLite = {
+  contractStart: string | null
+  contractEnd: string | null
+  monthlyFee: number | null
+  discountRate: number | null
+  options: Option[] | null
 }
 
-function DiffBadge({ own, other }: { own: number | null; other: number | null }) {
-  const d = diffPt(own, other)
-  if (d == null) return null
-  if (Math.abs(d) < 0.05) return <span className="ml-1 text-[10px] text-gray-400">±0</span>
-  const up = d > 0
+type Company = {
+  id: string
+  companyId: string | null
+  name: string
+  status: string
+  userId: string
+  user: { id: string; name: string }
+  contactPerson: string | null
+  contactPosition: string | null
+  phone: string | null
+  address: string | null
+  vehicleCount: number | null
+  driverCount: number | null
+  annualHiringTarget: number | null
+  adoptionChallenge: string | null
+  apps: string[]
+  dispatchRatio: string | null
+  shifts: string[]
+  competitorMedia: CompetitorMedia[]
+  tenshokudoCostPerHire: number | null
+  planName: string | null
+  monthlyFee: number | null
+  discountRate: number | null
+  discountNote: string | null
+  options: Option[]
+  contractStart: string | null
+  contractRenewal: string | null
+  contractNote: string | null
+  applyCount: number
+  hireCount: number
+  workplaceCertLevel: number
+  websiteUrl: string | null
+  temperature: string | null
+  negotiationMemo: string | null
+  nextAction: string | null
+  nextActionDate: string | null
+  memo: string | null
+  persona: string[]
+  media: string | null
+  monthlyRecords: MonthlyRecord[]
+  driverSales: DriverSales | null
+  hasReferralContract: boolean
+  referralFees: ReferralFee[] | null
+  condWorkSide: string | null
+  condFemale: string | null
+  condLgbtq: string | null
+  condForeign: string | null
+  condSpecialTrain: string | null
+  condAge64: string | null
+  condTattoo: string | null
+  condAccident: string | null
+  condDorm: boolean | null
+  condHousingSupport: boolean | null
+  condFemaleFacility: boolean | null
+  condJobChangeLimit: boolean | null
+  condGuarantor: boolean | null
+  condAgeRange: string | null
+  condRetirementAge: string | null
+  condIdealPerson: string | null
+  condHiringStandard: string | null
+  condAppearance: string | null
+  condMedicalHistory: string | null
+  condNote: string | null
+}
+
+type User = { id: string; name: string }
+
+// 制作案件の型とラベル
+type ProductionTask = {
+  id: string
+  name: string
+  type: string
+  priority: string
+  status: string
+  memo: string | null
+  dueDate: string | null
+  assignee: { id: string; name: string } | null
+  requester: { id: string; name: string } | null
+  createdAt: string
+}
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  new: "新規", revise: "修正", renewal: "リニューアル",
+}
+const TASK_PRIORITY_LABELS: Record<string, { label: string; cls: string }> = {
+  high: { label: "高", cls: "bg-red-100 text-red-700" },
+  medium: { label: "中", cls: "bg-yellow-100 text-yellow-700" },
+  low: { label: "低", cls: "bg-gray-100 text-gray-600" },
+}
+const TASK_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  not_started: { label: "未着手", cls: "bg-gray-100 text-gray-600" },
+  in_progress: { label: "着手", cls: "bg-blue-100 text-blue-700" },
+  sales_review: { label: "営業確認中", cls: "bg-purple-100 text-purple-700" },
+  client_review: { label: "企業確認中", cls: "bg-indigo-100 text-indigo-700" },
+  published: { label: "公開", cls: "bg-green-100 text-green-700" },
+  paused: { label: "一時停止中", cls: "bg-orange-100 text-orange-700" },
+  stopped: { label: "停止処理済み", cls: "bg-gray-200 text-gray-500" },
+}
+
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  contracted: { label: "✅ 契約中", cls: "bg-green-100 text-green-800" },
+  referral_only: { label: "🤝 人材紹介のみ", cls: "bg-emerald-100 text-emerald-800" },
+  approaching: { label: "📋 アプローチ中", cls: "bg-blue-100 text-blue-800" },
+  delisted: { label: "📉 掲載落ち", cls: "bg-gray-100 text-gray-600" },
+}
+const TEMP_MAP: Record<string, { label: string; cls: string }> = {
+  hot: { label: "🔥 ホット", cls: "bg-red-100 text-red-800" },
+  warm: { label: "☀️ ウォーム", cls: "bg-yellow-100 text-yellow-800" },
+  cold: { label: "❄️ コールド", cls: "bg-blue-100 text-blue-800" },
+}
+const ALL_SHIFTS = ["日勤", "夜勤", "隔日勤務", "その他"]
+const ALL_APPS = ["GO", "Uber Taxi", "S.RIDE", "DiDi", "自社アプリ"]
+const DRIVER_SHIFT_KEYS = ["全体", "隔日勤務", "日勤", "夜勤"]
+
+// 人材紹介：3択（可能/不可能/要相談）
+const COND3_MAP: Record<string, { label: string; cls: string }> = {
+  ok: { label: "可能", cls: "bg-green-100 text-green-800" },
+  ng: { label: "不可", cls: "bg-red-100 text-red-800" },
+  consult: { label: "要相談", cls: "bg-yellow-100 text-yellow-800" },
+}
+const COND3_OPTIONS = [
+  { value: "", label: "未入力" },
+  { value: "ok", label: "可能" },
+  { value: "ng", label: "不可能" },
+  { value: "consult", label: "要相談" },
+]
+const COND3_ACCEPT = [
+  { key: "condWorkSide", label: "Wワーク・副業" },
+  { key: "condFemale", label: "女性雇用" },
+  { key: "condLgbtq", label: "LGBTQ受け入れ" },
+  { key: "condForeign", label: "外国籍雇用" },
+  { key: "condTattoo", label: "タトゥー・刺青" },
+  { key: "condAccident", label: "事故・違反者" },
+  { key: "condAge64", label: "64歳未経験" },
+  { key: "condSpecialTrain", label: "特別講習対応" },
+]
+const COND2_ENV = [
+  { key: "condDorm", label: "寮", yes: "有", no: "無" },
+  { key: "condHousingSupport", label: "住宅支援", yes: "有", no: "無" },
+  { key: "condFemaleFacility", label: "女性専用設備", yes: "有", no: "無" },
+]
+const COND2_STANDARD = [
+  { key: "condJobChangeLimit", label: "転職回数制限", yes: "有", no: "無" },
+  { key: "condGuarantor", label: "保証人", yes: "要", no: "不要" },
+]
+const CONDTEXT_SHORT = [
+  { key: "condAgeRange", label: "採用可能年齢" },
+  { key: "condRetirementAge", label: "定年" },
+  { key: "condMedicalHistory", label: "既往歴" },
+]
+const CONDTEXT_LONG = [
+  { key: "condIdealPerson", label: "求める人物像" },
+  { key: "condHiringStandard", label: "採用基準" },
+  { key: "condAppearance", label: "身だしなみ" },
+  { key: "condNote", label: "備考" },
+]
+
+function fmt(n: number | null | undefined) {
+  if (n == null) return "-"
+  return Number(n).toLocaleString("ja-JP")
+}
+
+function certStars(level: number | null | undefined): string {
+  const n = level ?? 0
+  if (n <= 0) return "未取得"
+  return "★".repeat(n)
+}
+
+const CERT_OPTIONS = [
+  { value: 0, label: "未取得" },
+  { value: 1, label: "★" },
+  { value: 2, label: "★★" },
+  { value: 3, label: "★★★" },
+]
+
+// 契約期間1本の年間売上
+function periodAnnualRevenue(p: ContractPeriodLite): number {
+  const base = (p.monthlyFee ?? 0) * 12
+  const discount = Math.round(base * ((p.discountRate ?? 0) / 100))
+  const opt = (p.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
+  return base - discount + opt
+}
+
+// その契約期間が今アクティブか
+function periodIsActive(p: ContractPeriodLite): boolean {
+  if (!p.contractStart) return false
+  const now = new Date()
+  if (new Date(p.contractStart) > now) return false
+  if (p.contractEnd && new Date(p.contractEnd) < now) return false
+  return true
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <span className={"ml-1 text-[10px] " + (up ? "text-emerald-700" : "text-rose-700")}>
-      {up ? "▲" : "▼"}{Math.abs(d).toFixed(1)}pt
-    </span>
+    <div>
+      <div className="text-xs text-gray-400 mb-1">{label}</div>
+      {children}
+    </div>
   )
 }
 
-const RATE_ROWS: { key: keyof FunnelRates; label: string }[] = [
-  { key: "applyToSet", label: "応募 → 面接設定" },
-  { key: "setToDone", label: "面接設定 → 面接実施" },
-  { key: "doneToHire", label: "面接実施 → 入社" },
-  { key: "applyToHire", label: "応募 → 入社" },
-]
+function MonthlyRecordsTable({ records }: { records: MonthlyRecord[] }) {
+  const years = [...new Set(records.map(r => r.year))].sort()
+  const [selectedYear, setSelectedYear] = useState(years[years.length - 1])
+  const filtered = records.filter(r => r.year === selectedYear)
 
-export default function CompanyReportPage() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-semibold text-gray-700">📈 月次実績</h2>
+        <div className="flex gap-1">
+          {years.map(y => (
+            <button key={y} onClick={() => setSelectedYear(y)}
+              className={"px-3 py-1 text-xs rounded-full border transition-colors " + (selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400")}>
+              {y}年
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">月</th>
+              <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">応募数</th>
+              <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">入社数</th>
+              <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">流入元内訳</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {filtered.map((r) => (
+              <tr key={r.id} className="hover:bg-gray-50">
+                <td className="px-3 py-2 text-gray-900 font-medium">{r.month}月</td>
+                <td className="px-3 py-2 text-right font-bold text-blue-600">{r.applyCount}</td>
+                <td className="px-3 py-2 text-right font-bold text-green-600">{r.hireCount}</td>
+                <td className="px-3 py-2">
+                  {r.inflowBreakdown && (
+                    <div className="flex flex-wrap gap-1">
+                      {Object.entries(r.inflowBreakdown)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([key, val]) => (
+                          <span key={key} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                            {key}: {val}
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t border-gray-200">
+            <tr>
+              <td className="px-3 py-2 text-xs font-medium text-gray-500">{selectedYear}年 合計</td>
+              <td className="px-3 py-2 text-right font-bold text-blue-700">{filtered.reduce((s, r) => s + r.applyCount, 0)}</td>
+              <td className="px-3 py-2 text-right font-bold text-green-700">{filtered.reduce((s, r) => s + r.hireCount, 0)}</td>
+              <td className="px-3 py-2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function TenshokudoCostPerHire({ annualRevenue, records }: { annualRevenue: number; records: MonthlyRecord[] }) {
+  const years = [...new Set(records.map(r => r.year))].sort()
+  const [selectedYear, setSelectedYear] = useState(years.length > 0 ? years[years.length - 1] : null)
+
+  if (years.length === 0) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-400">転職道の採用単価：</span>
+        <span className="text-sm text-gray-400">月次実績データがありません</span>
+      </div>
+    )
+  }
+
+  const yearHires = records.filter(r => r.year === selectedYear).reduce((s, r) => s + r.hireCount, 0)
+  const costPerHire = yearHires > 0 ? Math.round(annualRevenue / yearHires) : null
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs text-gray-400">転職道の採用単価（年間掲載料 ÷ 入社数）</span>
+        <div className="flex gap-1">
+          {years.map(y => (
+            <button key={y} type="button" onClick={() => setSelectedYear(y)}
+              className={"px-2.5 py-0.5 text-xs rounded-full border transition-colors " + (selectedYear === y ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400")}>
+              {y}年
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-baseline gap-3">
+        {costPerHire != null
+          ? <span className="text-base font-bold text-blue-700">¥{fmt(costPerHire)}</span>
+          : <span className="text-sm text-gray-400">算出不可（入社数0）</span>}
+        <span className="text-xs text-gray-400">
+          {selectedYear}年：年間掲載料 ¥{fmt(annualRevenue)} ÷ 入社 {yearHires}名
+        </span>
+      </div>
+    </div>
+  )
+}
+
+export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const [userName, setUserName] = useState("")
-  const [report, setReport] = useState<Report | null>(null)
-  const [error, setError] = useState("")
+  const [company, setCompany] = useState<Company | null>(null)
+  const [users, setUsers] = useState<User[]>([])
+  // editMode: none=閲覧 / full=全項目編集 / referral=人材紹介項目のみ編集
+  const [editMode, setEditMode] = useState<"none" | "full" | "referral">("none")
+  const [form, setForm] = useState<Partial<Company>>({})
   const [loading, setLoading] = useState(false)
-  const [fromInput, setFromInput] = useState("")
-  const [toInput, setToInput] = useState("")
-  // AI所見（ボタンを押したときだけ生成。期間を変えたら消す）
-  const [insight, setInsight] = useState<ReportInsight | null>(null)
-  const [insightLoading, setInsightLoading] = useState(false)
-  const [insightError, setInsightError] = useState("")
+  const [userName, setUserName] = useState("")
+  const [session, setSession] = useState<{ user?: { id?: string; role?: string; roles?: string[] } } | null>(null)
+  const [tasks, setTasks] = useState<ProductionTask[]>([])
+  const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
+  const [taskLoading, setTaskLoading] = useState(false)
 
-  // from/to を引数で受け取る（state に依存させない＝無限ループ防止）
-  const load = async (from: string, to: string) => {
+  // 契約期間（年間売上の集計用。ContractPeriods コンポーネントとは別に軽く取得）
+  const [periods, setPeriods] = useState<ContractPeriodLite[]>([])
+
+  const [inlineField, setInlineField] = useState<string>("")
+  const [inlineValue, setInlineValue] = useState<string>("")
+  const [inlineSaving, setInlineSaving] = useState(false)
+  const [inlineSavedMsg, setInlineSavedMsg] = useState(false)
+
+  const loadCompany = () => {
+    fetch("/api/companies/" + id).then(r => r.json()).then(data => {
+      setCompany(data)
+      setForm({
+        ...data,
+        competitorMedia: data.competitorMedia ?? [],
+        options: data.options ?? [],
+        apps: data.apps ?? [],
+        shifts: data.shifts ?? [],
+        driverSales: data.driverSales ?? { monthlyRevenue: undefined, annualRevenue: undefined, shifts: {} },
+        referralFees: data.referralFees ?? [],
+      })
+    })
+  }
+
+  const loadPeriods = () => {
+    fetch("/api/companies/" + id + "/contract-periods").then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setPeriods(d)
+    })
+  }
+
+  useEffect(() => {
+    loadCompany()
+    loadPeriods()
+    fetch("/api/users").then(r => r.json()).then(setUsers)
+    fetch("/api/auth/session").then(r => r.json()).then(s => {
+      setUserName(s?.user?.name ?? "")
+      setSession(s ?? null)
+    })
+    loadTasks()
+  }, [id])
+
+  const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }))
+
+  const loadTasks = async () => {
+    const res = await fetch("/api/production-tasks?companyId=" + id)
+    if (res.ok) setTasks(await res.json())
+  }
+
+  const handleCreateTask = async () => {
+    if (!taskForm.name.trim()) return
+    setTaskLoading(true)
+    const res = await fetch("/api/production-tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...taskForm, companyId: id }),
+    })
+    if (res.ok) {
+      setTaskForm({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
+      await loadTasks()
+    }
+    setTaskLoading(false)
+  }
+
+  // 保存：referral モードのときは紹介項目だけを送る（API側も同じ範囲で弾いている）
+  const handleSave = async () => {
     setLoading(true)
-    setError("")
-    const qs = new URLSearchParams()
-    if (from) qs.set("from", from)
-    if (to) qs.set("to", to)
-    const res = await fetch(`/api/companies/${id}/report?${qs.toString()}`)
-    const data = await res.json().catch(() => null)
-    if (!res.ok || !data) {
-      setError(data?.error ?? "レポートを読み込めませんでした")
-      setReport(null)
+    let payload: Record<string, unknown>
+    if (editMode === "referral") {
+      const formRec = form as unknown as Record<string, unknown>
+      payload = {}
+      REFERRAL_FIELDS.forEach(key => {
+        if (key in formRec) payload[key] = formRec[key]
+      })
     } else {
-      setReport(data)
-      setInsight(null)
-      setInsightError("")
-      setFromInput(ymValue(data.period.from))
-      setToInput(ymValue(data.period.to))
-      // 期間をURLに残す（共有・再読込用）
-      window.history.replaceState(null, "", `?from=${ymValue(data.period.from)}&to=${ymValue(data.period.to)}`)
+      payload = form as unknown as Record<string, unknown>
+    }
+    const res = await fetch("/api/companies/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setCompany(updated)
+      setForm({
+        ...updated,
+        competitorMedia: updated.competitorMedia ?? [],
+        options: updated.options ?? [],
+        apps: updated.apps ?? [],
+        shifts: updated.shifts ?? [],
+        driverSales: updated.driverSales ?? { monthlyRevenue: undefined, annualRevenue: undefined, shifts: {} },
+        referralFees: updated.referralFees ?? [],
+      })
+      setEditMode("none")
+    } else {
+      alert("保存に失敗しました。権限を確認してください。")
     }
     setLoading(false)
   }
 
-  const generateInsight = async () => {
-    if (!report) return
-    setInsightLoading(true)
-    setInsightError("")
-    const res = await fetch(`/api/companies/${id}/report/insight`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from: ymValue(report.period.from), to: ymValue(report.period.to) }),
-    })
-    const data = await res.json().catch(() => null)
-    if (!res.ok || !data) {
-      setInsightError(data?.error ?? "所見の生成に失敗しました")
-    } else {
-      setInsight(data)
+  const handleCancel = () => {
+    setEditMode("none")
+    if (company) {
+      setForm({
+        ...company,
+        competitorMedia: company.competitorMedia ?? [],
+        options: company.options ?? [],
+        apps: company.apps ?? [],
+        shifts: company.shifts ?? [],
+        driverSales: company.driverSales ?? { monthlyRevenue: undefined, annualRevenue: undefined, shifts: {} },
+        referralFees: company.referralFees ?? [],
+      })
     }
-    setInsightLoading(false)
   }
 
-  useEffect(() => {
-    fetch("/api/auth/session").then(r => r.json()).then(s => setUserName(s?.user?.name ?? ""))
-    const sp = new URLSearchParams(window.location.search)
-    load(sp.get("from") ?? "", sp.get("to") ?? "")
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  const handleDelete = async () => {
+    if (!confirm("この企業を削除しますか？")) return
+    await fetch("/api/companies/" + id, { method: "DELETE" })
+    router.push("/companies")
+  }
 
-  const area = report?.comparisons.area
-  const size = report?.comparisons.size
-  const areaOk = area?.available ? area : null
-  const sizeOk = size?.available ? size : null
+  const startInline = (field: string, currentValue: string) => {
+    setInlineField(field)
+    setInlineValue(currentValue ?? "")
+    setInlineSavedMsg(false)
+  }
 
-  // 月次グラフの最大値（応募）
-  const maxApply = report ? Math.max(1, ...report.monthly.map(m => m.counts.apply)) : 1
-  const uuReliable = report?.total.uuCoverage != null && report.total.uuCoverage >= 0.9
+  const cancelInline = () => {
+    setInlineField("")
+    setInlineValue("")
+  }
+
+  const saveInline = async (field: string, valueOverride?: string) => {
+    const value = valueOverride !== undefined ? valueOverride : inlineValue
+    setInlineSaving(true)
+
+    const payload: Record<string, unknown> = {}
+    if (field === "nextActionDate") {
+      payload.nextActionDate = value || null
+    } else {
+      payload[field] = value || null
+    }
+
+    const res = await fetch("/api/companies/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+
+    if (res.ok) {
+      setCompany(c => c ? { ...c, [field]: value || null } : c)
+      setForm(f => ({ ...f, [field]: value || null }))
+      setInlineField("")
+      setInlineValue("")
+      setInlineSavedMsg(true)
+      setTimeout(() => setInlineSavedMsg(false), 2000)
+    }
+    setInlineSaving(false)
+  }
+
+  if (!company) return <div className="flex h-screen items-center justify-center text-gray-400">読み込み中...</div>
+
+  // 今アクティブな掲載契約の年間売上合計（競合媒体セクションの採用単価に使う）
+  const activeAnnualRevenue = periods
+    .filter(periodIsActive)
+    .reduce((s, p) => s + periodAnnualRevenue(p), 0)
+    // 転職道実績（累計）は月次実績の全期間合計で出す
+  const totalApply = (company.monthlyRecords ?? []).reduce((s, r) => s + (r.applyCount ?? 0), 0)
+  const totalHire = (company.monthlyRecords ?? []).reduce((s, r) => s + (r.hireCount ?? 0), 0)
+
+  // ===== 権限判定（roles ベース） =====
+  const roles = getRoles(session)
+  const canFull = canEditCompanyFull(session, company.userId)
+  const canReferral = canEditReferralOnly(session, company.userId)
+  const canDelete = canDeleteCompany(session, company.userId)
+  const canTask = canCreateTask(session)
+  const productionOnly = isProduction(session) && !canFull && !canReferral
+
+  // 全項目編集モード中だけ true。referral モードでは通常フィールドは閲覧のまま
+  const editing = editMode === "full"
+  // 人材紹介セクションの入力可否（full でも referral でも入力できる）
+  const editingReferral = editMode === "full" || editMode === "referral"
+
+  // インライン編集は全項目編集権限がある人だけ
+  const canInlineEdit = editMode === "none" && canFull
+
+  const setDriverSales = (key: string, val: unknown) => {
+    const current = (form.driverSales as DriverSales) ?? {}
+    set("driverSales", { ...current, [key]: val })
+  }
+
+  const setDriverShift = (shift: string, field: "top" | "avg", val: string) => {
+    const current = (form.driverSales as DriverSales) ?? {}
+    const shifts = current.shifts ?? {}
+    set("driverSales", {
+      ...current,
+      shifts: {
+        ...shifts,
+        [shift]: { ...shifts[shift], [field]: val ? Number(val) : undefined },
+      },
+    })
+  }
+
+  const formVal = form as unknown as Record<string, unknown>
+  const compVal = company as unknown as Record<string, unknown>
 
   return (
-    <div className="flex h-screen bg-gray-50 print:block print:h-auto print:bg-white">
-      <style>{`
-        @page { size: A4; margin: 12mm; }
-        @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .report-section { break-inside: avoid; }
-        }
-      `}</style>
-
-      {/* flex にしないと Sidebar が画面の高さまで伸びない */}
-      <div className="print:hidden flex">
-        <Sidebar userName={userName} />
-      </div>
-
-      <main className="flex-1 overflow-auto print:overflow-visible">
-        <div className="px-8 py-6 max-w-4xl print:p-0 print:max-w-none">
-
-          {/* 操作バー（印刷しない） */}
-          <div className="print:hidden mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <button type="button" onClick={() => router.push("/companies/" + id)} className="text-sm text-gray-400 hover:text-gray-600">
-                ← 企業詳細
-              </button>
-            </div>
-            <div className="flex flex-wrap items-end gap-3 bg-white rounded-xl border border-gray-200 p-4">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">開始月</label>
-                <input type="month" value={fromInput} onChange={e => setFromInput(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">終了月</label>
-                <input type="month" value={toInput} onChange={e => setToInput(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900" />
-              </div>
-              <button type="button" onClick={() => load(fromInput, toInput)} disabled={loading}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50">
-                {loading ? "集計中..." : "期間を反映"}
-              </button>
-              <div className="flex-1" />
-              <button type="button" onClick={generateInsight} disabled={!report || insightLoading}
-                className="px-4 py-2 text-sm border border-blue-300 rounded-lg text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-                {insightLoading ? "所見を生成中..." : insight ? "✨ 所見を作り直す" : "✨ 所見を生成"}
-              </button>
-              <button type="button" onClick={() => window.print()} disabled={!report}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                🖨 印刷 / PDF保存
-              </button>
-            </div>
-            {insightError && <p className="text-xs text-rose-600 mt-2">{insightError}</p>}
-            <p className="text-xs text-gray-400 mt-2">
-              PDFにするときは、印刷画面の送信先で「PDFに保存」を選び、「ヘッダーとフッター」のチェックを外してください。
-            </p>
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar userName={userName} />
+      <main className="flex-1 overflow-auto">
+        <div className="px-8 py-6 max-w-5xl">
+          <div className="flex items-center gap-3 mb-4">
+            <a href="/companies" className="text-sm text-gray-400 hover:text-gray-600">← 企業一覧</a>
+            <span className="text-gray-300">/</span>
+            <h1 className="text-xl font-bold text-gray-800">{company.name}</h1>
+            {company.companyId && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">ID: {company.companyId}</span>}
+            {company.hasReferralContract && <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-medium">🤝 紹介契約あり</span>}
           </div>
 
-          {error && <div className="bg-white rounded-xl border border-rose-200 p-6 text-sm text-rose-700">{error}</div>}
-          {!report && !error && <div className="text-sm text-gray-400 py-12 text-center">集計中...</div>}
+          <div className="flex gap-2 mb-6 items-center">
+            {editMode !== "none" ? (
+              <>
+                <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
+                <button onClick={handleCancel} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
+                {editMode === "referral" && (
+                  <span className="text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">🤝 人材紹介の項目のみ編集できます</span>
+                )}
+              </>
+            ) : (
+              <>
+                {canFull && (
+                  <button onClick={() => setEditMode("full")} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 全項目を編集</button>
+                )}
+                {canReferral && (
+                  <button onClick={() => setEditMode("referral")} className={"px-4 py-2 rounded-lg text-sm font-medium " + (canFull ? "border border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 text-white hover:bg-emerald-700")}>🤝 紹介情報を編集</button>
+                )}
+                {/* 採用レポート（閲覧できる人なら誰でも） */}
+                <button onClick={() => router.push("/companies/" + id + "/report")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">📊 採用レポート</button>
+                {canDelete && (
+                  <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
+                )}
+                {!canFull && !canReferral && (
+                  <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">
+                    {productionOnly ? "👁 閲覧のみ（制作）" : "👁 閲覧のみ"}
+                  </span>
+                )}
+                {inlineSavedMsg && <span className="text-xs text-green-600 self-center ml-1">✓ 保存しました</span>}
+              </>
+            )}
+          </div>
 
-          {report && (
-            <article className="bg-white rounded-xl border border-gray-200 p-8 print:border-0 print:rounded-none print:p-0 text-gray-900">
+          {/* 基本情報 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
+            <div className="grid grid-cols-3 gap-4">
+              <Field label="企業名">
+                {editing ? <input value={form.name ?? ""} onChange={e => set("name", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900 font-medium">{company.name}</p>}
+              </Field>
+              <Field label="企業ID">
+                {editing ? <input value={form.companyId ?? ""} onChange={e => set("companyId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.companyId ?? "-"}</p>}
+              </Field>
+              <Field label="ステータス">
+                {editing ? (
+                  <select
+                    value={form.status ?? ""}
+                    onChange={e => {
+                      const v = e.target.value
+                      setForm(f => ({
+                        ...f,
+                        status: v,
+                        hasReferralContract: v === "referral_only" ? true : f.hasReferralContract,
+                      }))
+                    }}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+                  >
+                    <option value="approaching">📋 アプローチ中</option>
+                    <option value="contracted">✅ 契約中</option>
+                    <option value="referral_only">🤝 人材紹介のみ契約中</option>
+                    <option value="delisted">📉 掲載落ち</option>
+                  </select>
+                ) : <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_MAP[company.status]?.cls ?? "")}>{STATUS_MAP[company.status]?.label ?? company.status}</span>}
+              </Field>
+              <Field label="担当者">
+                {editing ? (
+                  <select value={form.userId ?? ""} onChange={e => set("userId", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                ) : <p className="text-sm text-gray-900">{company.user.name}</p>}
+              </Field>
+              <Field label="企業担当者">
+                {editing ? <input value={form.contactPerson ?? ""} onChange={e => set("contactPerson", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 山田太郎" /> : <p className="text-sm text-gray-900">{company.contactPerson ?? "-"}</p>}
+              </Field>
+              <Field label="役職">
+                {editing ? <input value={form.contactPosition ?? ""} onChange={e => set("contactPosition", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 採用部長" /> : <p className="text-sm text-gray-900">{company.contactPosition ?? "-"}</p>}
+              </Field>
+              <Field label="電話番号">
+                {editing ? <input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.phone ?? "-"}</p>}
+              </Field>
+              <Field label="住所">
+                {editing ? <input value={form.address ?? ""} onChange={e => set("address", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.address ?? "-"}</p>}
+              </Field>
+              <Field label="保有車両数">
+                {editing ? <input type="number" value={form.vehicleCount ?? ""} onChange={e => set("vehicleCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.vehicleCount != null ? company.vehicleCount + "台" : "-"}</p>}
+              </Field>
+              <Field label="ドライバー数">
+                {editing ? <input type="number" value={form.driverCount ?? ""} onChange={e => set("driverCount", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.driverCount != null ? company.driverCount + "名" : "-"}</p>}
+              </Field>
+              <Field label="年間採用目標">
+                {editing ? <input type="number" value={form.annualHiringTarget ?? ""} onChange={e => set("annualHiringTarget", e.target.value === "" ? null : Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" /> : <p className="text-sm text-gray-900">{company.annualHiringTarget != null ? company.annualHiringTarget + "名" : "-"}</p>}
+              </Field>
+              <Field label="働きやすい職場認証">
+                {editing ? (
+                  <select value={form.workplaceCertLevel ?? 0} onChange={e => set("workplaceCertLevel", Number(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    {CERT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                ) : (
+                  (company.workplaceCertLevel ?? 0) > 0
+                    ? <p className="text-sm text-yellow-500 font-medium">{certStars(company.workplaceCertLevel)}</p>
+                    : <p className="text-sm text-gray-400">未取得</p>
+                )}
+              </Field>
+              <Field label="HP（企業サイト）">
+                {editing ? (
+                  <input value={form.websiteUrl ?? ""} onChange={e => set("websiteUrl", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="https://example.com" />
+                ) : (
+                  company.websiteUrl
+                    ? <a href={company.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">{company.websiteUrl}</a>
+                    : <p className="text-sm text-gray-400">-</p>
+                )}
+              </Field>
+            </div>
+          </div>
 
-              {/* 表紙ヘッダー */}
-              <header className="report-section border-b-2 border-gray-900 pb-4 mb-6">
-                <div className="flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">転職道 採用状況レポート</p>
-                    <h1 className="text-2xl font-bold">{report.company.name} 様</h1>
+          {/* 採用課題・アプリ */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">採用課題</h2>
+              {editing
+                ? <textarea value={form.adoptionChallenge ?? ""} onChange={e => set("adoptionChallenge", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="採用における課題を記録..." />
+                : <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{company.adoptionChallenge || "-"}</p>}
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">導入アプリ・配車割合</h2>
+              <div className="mb-3">
+                <div className="text-xs text-gray-400 mb-2">導入アプリ</div>
+                {editing ? (
+                  <div className="flex flex-wrap gap-2">
+                    {ALL_APPS.map(app => {
+                      const sel = (form.apps ?? []).includes(app)
+                      return (
+                        <button key={app} type="button" onClick={() => {
+                          const apps = form.apps ?? []
+                          set("apps", sel ? apps.filter(a => a !== app) : [...apps, app])
+                        }} className={"text-xs px-3 py-1 rounded-full border transition-colors " + (sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200")}>{app}</button>
+                      )
+                    })}
                   </div>
-                  <div className="text-right text-xs text-gray-600 leading-relaxed">
-                    <div>対象期間　{ymLabel(report.period.from)} 〜 {ymLabel(report.period.to)}</div>
-                    <div>作成日　{new Date(report.generatedAt).toLocaleDateString("ja-JP")}</div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(company.apps ?? []).length > 0
+                      ? (company.apps ?? []).map(app => <span key={app} className="text-xs px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">{app}</span>)
+                      : <span className="text-sm text-gray-400">-</span>}
                   </div>
-                </div>
-                <div className="flex gap-4 mt-3 text-xs text-gray-500">
-                  <span>所在地：{report.company.prefecture}</span>
-                  <span>保有台数：{report.company.vehicleCount != null ? report.company.vehicleCount + "台" : "未入力"}</span>
-                  <span>乗務員数：{report.company.driverCount != null ? report.company.driverCount + "名" : "未入力"}</span>
-                </div>
-              </header>
+                )}
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">配車割合</div>
+                {editing
+                  ? <input value={form.dispatchRatio ?? ""} onChange={e => set("dispatchRatio", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: GO 60% / Uber 40%" />
+                  : <p className="text-sm text-gray-700">{company.dispatchRatio || "-"}</p>}
+              </div>
+            </div>
+          </div>
 
-              {/* 1. 期間サマリー */}
-              <section className="report-section mb-8">
-                <h2 className="text-base font-bold mb-3">期間の実績</h2>
-                <div className="grid grid-cols-4 border border-gray-300">
-                  {[
-                    {
-                      label: "応募",
-                      value: report.total.counts.apply,
-                      sub: [
-                        `Web ${num(report.total.entryBreakdown.web)}件 ／ TEL ${num(report.total.entryBreakdown.tel)}件`
-                          + (report.total.entryBreakdown.unknown > 0 ? ` ／ 不明 ${num(report.total.entryBreakdown.unknown)}件` : ""),
-                        uuReliable ? `実人数 ${num(report.total.uu)}人` : null,
-                      ].filter(Boolean).join("\n"),
-                    },
-                    { label: "面接設定", value: report.total.counts.interviewSet, sub: null },
-                    { label: "面接実施", value: report.total.counts.interviewDone, sub: null },
-                    { label: "入社", value: report.total.counts.hired, sub: null },
-                  ].map((c, i) => (
-                    <div key={c.label} className={"px-4 py-3 " + (i > 0 ? "border-l border-gray-300" : "")}>
-                      <div className="text-xs text-gray-500">{c.label}</div>
-                      <div className="text-2xl font-bold tabular-nums">{num(c.value)}<span className="text-sm font-normal ml-0.5">件</span></div>
-                      {c.sub && <div className="text-[11px] text-gray-500 whitespace-pre-line">{c.sub}</div>}
+          {/* 募集勤務形態 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">募集勤務形態</h2>
+            <div className="flex gap-2 flex-wrap">
+              {ALL_SHIFTS.map(s => {
+                const sel = (editing ? form.shifts ?? [] : company.shifts ?? []).includes(s)
+                return editing ? (
+                  <button key={s} type="button" onClick={() => {
+                    const shifts = form.shifts ?? []
+                    set("shifts", sel ? shifts.filter(x => x !== s) : [...shifts, s])
+                  }} className={"text-sm px-4 py-1.5 rounded-full border transition-colors " + (sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-500 border-gray-200")}>{s}</button>
+                ) : (
+                  <span key={s} className={"text-sm px-4 py-1.5 rounded-full border " + (sel ? "bg-blue-100 text-blue-800 border-blue-300" : "bg-gray-50 text-gray-300 border-gray-200")}>{s}</span>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* ドライバー売上情報 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">🚕 ドライバー・会社売上情報</h2>
+            {editing ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="会社月間売上">
+                    <input
+                      type="number"
+                      value={(form.driverSales as DriverSales)?.monthlyRevenue ?? ""}
+                      onChange={e => setDriverSales("monthlyRevenue", e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+                      placeholder="例: 9600000"
+                    />
+                  </Field>
+                  <Field label="会社年間売上">
+                    <input
+                      type="number"
+                      value={(form.driverSales as DriverSales)?.annualRevenue ?? ""}
+                      onChange={e => setDriverSales("annualRevenue", e.target.value ? Number(e.target.value) : undefined)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+                      placeholder="例: 115200000"
+                    />
+                  </Field>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-2">勤務形態別ドライバー売上（円）</div>
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">勤務形態</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">トップ売上（円）</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">平均売上（円）</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {DRIVER_SHIFT_KEYS.map(shift => (
+                        <tr key={shift}>
+                          <td className="px-3 py-2 text-xs font-medium text-gray-700">{shift}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={(form.driverSales as DriverSales)?.shifts?.[shift]?.top ?? ""}
+                              onChange={e => setDriverShift(shift, "top", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900"
+                              placeholder="例: 700000"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              value={(form.driverSales as DriverSales)?.shifts?.[shift]?.avg ?? ""}
+                              onChange={e => setDriverShift(shift, "avg", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900"
+                              placeholder="例: 700000"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="text-xs text-blue-500 mb-1">会社月間売上</div>
+                    <div className="text-2xl font-bold text-blue-700">
+                      {company.driverSales?.monthlyRevenue != null ? "¥" + fmt(company.driverSales.monthlyRevenue) : "-"}
                     </div>
-                  ))}
-                </div>
-              </section>
-
-              {/* 2. 歩留まりと比較 */}
-              <section className="report-section mb-8">
-                <h2 className="text-base font-bold mb-1">選考の歩留まり</h2>
-                <p className="text-xs text-gray-500 mb-3">各段階へ進んだ割合です。比較対象は他社の合計値から算出した平均で、個社名は含みません。</p>
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="border-y border-gray-900">
-                      <th className="text-left py-2 pr-2 font-medium">段階</th>
-                      <th className="text-right py-2 px-2 font-medium">御社</th>
-                      <th className="text-right py-2 px-2 font-medium">{area?.label ?? "エリア平均"}</th>
-                      <th className="text-right py-2 pl-2 font-medium">{size?.label ?? "同規模平均"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {RATE_ROWS.map(r => (
-                      <tr key={r.key} className="border-b border-gray-200">
-                        <td className="py-2 pr-2">{r.label}</td>
-                        <td className="py-2 px-2 text-right font-bold tabular-nums">{pct(report.total.rates[r.key])}</td>
-                        <td className="py-2 px-2 text-right tabular-nums">
-                          {areaOk ? <>{pct(areaOk.rates[r.key])}<DiffBadge own={report.total.rates[r.key]} other={areaOk.rates[r.key]} /></> : "—"}
-                        </td>
-                        <td className="py-2 pl-2 text-right tabular-nums">
-                          {sizeOk ? <>{pct(sizeOk.rates[r.key])}<DiffBadge own={report.total.rates[r.key]} other={sizeOk.rates[r.key]} /></> : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-b border-gray-200">
-                      <td className="py-2 pr-2">応募数（1社あたり）</td>
-                      <td className="py-2 px-2 text-right font-bold tabular-nums">{num(report.total.counts.apply)}</td>
-                      <td className="py-2 px-2 text-right tabular-nums">{areaOk ? num(areaOk.perCompany.apply, 1) : "—"}</td>
-                      <td className="py-2 pl-2 text-right tabular-nums">{sizeOk ? num(sizeOk.perCompany.apply, 1) : "—"}</td>
-                    </tr>
-                    <tr className="border-b border-gray-900">
-                      <td className="py-2 pr-2">入社数（1社あたり）</td>
-                      <td className="py-2 px-2 text-right font-bold tabular-nums">{num(report.total.counts.hired)}</td>
-                      <td className="py-2 px-2 text-right tabular-nums">{areaOk ? num(areaOk.perCompany.hired, 1) : "—"}</td>
-                      <td className="py-2 pl-2 text-right tabular-nums">{sizeOk ? num(sizeOk.perCompany.hired, 1) : "—"}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <div className="text-[11px] text-gray-500 mt-2 space-y-0.5">
-                  {areaOk && <div>{areaOk.label}：比較対象 {areaOk.companyCount}社</div>}
-                  {sizeOk && <div>{sizeOk.label}：比較対象 {sizeOk.companyCount}社</div>}
-                  {area && !area.available && <div>{area.label}：{area.reason}</div>}
-                  {size && !size.available && <div>{size.label}：{size.reason}</div>}
-                </div>
-              </section>
-
-              {/* 3. 月次推移 */}
-              <section className="report-section mb-8">
-                <h2 className="text-base font-bold mb-3">月別の推移</h2>
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="border-y border-gray-900">
-                      <th className="text-left py-2 pr-2 font-medium w-24">月</th>
-                      <th className="text-left py-2 px-2 font-medium">応募</th>
-                      {uuReliable && <th className="text-right py-2 px-2 font-medium w-16">実人数</th>}
-                      <th className="text-right py-2 px-2 font-medium w-16">面接設定</th>
-                      <th className="text-right py-2 px-2 font-medium w-16">面接実施</th>
-                      <th className="text-right py-2 pl-2 font-medium w-14">入社</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.monthly.map(m => (
-                      <tr key={`${m.year}-${m.month}`} className="border-b border-gray-200">
-                        <td className="py-1.5 pr-2 tabular-nums">{m.year}/{String(m.month).padStart(2, "0")}</td>
-                        <td className="py-1.5 px-2">
-                          <div className="flex items-center gap-2">
-                            <div className="h-3 bg-gray-800" style={{ width: `${(m.counts.apply / maxApply) * 70}%` }} />
-                            <span className="tabular-nums text-xs">{m.counts.apply}</span>
-                          </div>
-                        </td>
-                        {uuReliable && <td className="py-1.5 px-2 text-right tabular-nums">{m.uu}</td>}
-                        <td className="py-1.5 px-2 text-right tabular-nums">{m.counts.interviewSet}</td>
-                        <td className="py-1.5 px-2 text-right tabular-nums">{m.counts.interviewDone}</td>
-                        <td className="py-1.5 pl-2 text-right tabular-nums font-bold">{m.counts.hired}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </section>
-
-              {/* 4. 所見（AI。生成したときだけ表示・印刷） */}
-              {insight && (
-                <section className="report-section mb-8">
-                  <h2 className="text-base font-bold mb-3">所見</h2>
-                  <div className="space-y-3">
-                    {insight.sections.map(sec => (
-                      <div key={sec.key} className="border-l-2 border-gray-900 pl-3">
-                        <h3 className="text-sm font-bold mb-0.5">{sec.title}</h3>
-                        {sec.text
-                          ? <p className="text-sm leading-relaxed">{sec.text}</p>
-                          : <p className="text-xs text-gray-500">{sec.skippedReason}</p>}
-                      </div>
-                    ))}
                   </div>
-                </section>
-              )}
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="text-xs text-green-500 mb-1">会社年間売上</div>
+                    <div className="text-2xl font-bold text-green-700">
+                      {company.driverSales?.annualRevenue != null ? "¥" + fmt(company.driverSales.annualRevenue) : "-"}
+                    </div>
+                  </div>
+                </div>
+                {company.driverSales?.shifts && Object.keys(company.driverSales.shifts).length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-400 mb-2">勤務形態別ドライバー売上</div>
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">勤務形態</th>
+                          <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">トップ売上</th>
+                          <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">平均売上</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {DRIVER_SHIFT_KEYS.filter(s => company.driverSales?.shifts?.[s]).map(shift => (
+                          <tr key={shift} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 text-xs font-medium text-gray-700">{shift}</td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-600">
+                              {company.driverSales?.shifts?.[shift]?.top != null ? "¥" + fmt(company.driverSales.shifts[shift].top) : "-"}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-gray-600">
+                              {company.driverSales?.shifts?.[shift]?.avg != null ? "¥" + fmt(company.driverSales.shifts[shift].avg) : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {(!company.driverSales || (!company.driverSales.monthlyRevenue && !company.driverSales.annualRevenue && !company.driverSales.shifts)) && (
+                  <p className="text-sm text-gray-400">未入力</p>
+                )}
+              </div>
+            )}
+          </div>
 
-              {/* 注記 */}
-              {report.notes.length > 0 && (
-                <section className="report-section border-t border-gray-300 pt-3">
-                  <h2 className="text-xs font-bold text-gray-600 mb-1">集計についての注記</h2>
-                  <ul className="text-[11px] text-gray-600 space-y-0.5 list-disc pl-4">
-                    {report.notes.map((n, i) => <li key={i}>{n}</li>)}
-                  </ul>
-                </section>
-              )}
-            </article>
+          {/* 競合媒体 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">転職道以外の利用媒体・採用単価</h2>
+            <table className="w-full text-sm mb-3">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">媒体名</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">月額費用</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">採用単価</th>
+                  <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">備考</th>
+                  {editing && <th className="px-3 py-2"></th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(editing ? form.competitorMedia ?? [] : company.competitorMedia ?? []).map((m, i) => (
+                  <tr key={i}>
+                    <td className="px-3 py-2 text-gray-900">{editing ? <input value={m.name} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], name: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" /> : m.name}</td>
+                    <td className="px-3 py-2 text-gray-900">{editing ? <input type="number" value={m.monthly ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], monthly: e.target.value === "" ? null : Number(e.target.value) }; set("competitorMedia", arr) }} className="w-24 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.monthly != null ? "¥" + fmt(m.monthly) : "-")}</td>
+                    <td className="px-3 py-2 text-gray-900">{editing ? <input type="number" value={m.costPerHire ?? ""} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], costPerHire: e.target.value === "" ? null : Number(e.target.value) }; set("competitorMedia", arr) }} className="w-28 border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" placeholder="円" /> : (m.costPerHire != null ? "¥" + fmt(m.costPerHire) : "-")}</td>
+                    <td className="px-3 py-2 text-gray-900">{editing ? <input value={m.note} onChange={e => { const arr = [...(form.competitorMedia ?? [])]; arr[i] = { ...arr[i], note: e.target.value }; set("competitorMedia", arr) }} className="w-full border border-gray-200 rounded px-2 py-1 text-xs text-gray-900" /> : m.note}</td>
+                    {editing && <td className="px-3 py-2"><button type="button" onClick={() => set("competitorMedia", (form.competitorMedia ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs hover:text-red-600">削除</button></td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {editing && <button type="button" onClick={() => set("competitorMedia", [...(form.competitorMedia ?? []), { name: "", monthly: null, costPerHire: null, note: "" }])} className="text-xs text-blue-600 hover:underline">＋ 媒体を追加</button>}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <TenshokudoCostPerHire annualRevenue={activeAnnualRevenue} records={company.monthlyRecords ?? []} />
+            </div>
+          </div>
+
+          {/* 掲載契約（契約期間） */}
+          <ContractPeriods
+            companyId={company.id}
+            canEdit={canFull}
+            onStatusMaybeChanged={() => { loadCompany(); loadPeriods() }}
+          />
+
+          {/* 転職道実績 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">転職道実績（累計）</h2>
+            <div className="grid grid-cols-2 gap-4 max-w-md">
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-xs text-gray-400 mb-1">累計応募数</div>
+                <div className="text-2xl font-bold text-gray-900">{totalApply}</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-xs text-gray-400 mb-1">累計入社数</div>
+                <div className="text-2xl font-bold text-green-600">{totalHire}</div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">月次実績の全期間合計です。</p>
+          </div>
+
+          {/* 月次実績 */}
+          {company.monthlyRecords && company.monthlyRecords.length > 0 && (
+            <MonthlyRecordsTable records={company.monthlyRecords} />
           )}
+
+          {/* 商談情報（インライン編集対応） */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">商談情報</h2>
+              {canInlineEdit && (
+                <span className="text-xs text-gray-400">クリックしてその場で編集できます</span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <Field label="温度感">
+                {editing ? (
+                  <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    <option value="">未設定</option>
+                    <option value="hot">🔥 ホット</option>
+                    <option value="warm">☀️ ウォーム</option>
+                    <option value="cold">❄️ コールド</option>
+                  </select>
+                ) : inlineField === "temperature" ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={inlineValue}
+                      onChange={e => saveInline("temperature", e.target.value)}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">未設定</option>
+                      <option value="hot">🔥 ホット</option>
+                      <option value="warm">☀️ ウォーム</option>
+                      <option value="cold">❄️ コールド</option>
+                    </select>
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("temperature", company.temperature ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.temperature
+                      ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_MAP[company.temperature]?.cls ?? "")}>{TEMP_MAP[company.temperature]?.label ?? company.temperature}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 設定" : "-"}</span>}
+                  </button>
+                )}
+              </Field>
+
+              <Field label="次回アクション">
+                {editing ? (
+                  <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 資料送付" />
+                ) : inlineField === "nextAction" ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={inlineValue}
+                      onChange={e => setInlineValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") saveInline("nextAction"); if (e.key === "Escape") cancelInline() }}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="flex-1 border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="例: 資料送付"
+                    />
+                    <button onClick={() => saveInline("nextAction")} disabled={inlineSaving} className="text-xs bg-blue-600 text-white rounded px-2 py-1.5 hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">{inlineSaving ? "..." : "保存"}</button>
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("nextAction", company.nextAction ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.nextAction
+                      ? <span className="text-sm text-gray-900">{company.nextAction}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 入力" : "-"}</span>}
+                  </button>
+                )}
+              </Field>
+
+              <Field label="次回アクション日">
+                {editing ? (
+                  <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+                ) : inlineField === "nextActionDate" ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={inlineValue.slice(0, 10)}
+                      onChange={e => saveInline("nextActionDate", e.target.value)}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("nextActionDate", company.nextActionDate ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.nextActionDate
+                      ? <span className="text-sm text-gray-900">{company.nextActionDate.slice(0, 10)}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 日付を設定" : "-"}</span>}
+                  </button>
+                )}
+              </Field>
+            </div>
+            <Field label="商談メモ">
+              {editing
+                ? <textarea value={form.negotiationMemo ?? ""} onChange={e => set("negotiationMemo", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="商談の詳細を記録..." />
+                : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.negotiationMemo ?? "-"}</p>}
+            </Field>
+          </div>
+
+          {/* 人材紹介（キャリアアドバイザー向け） */}
+          <div className={"bg-white rounded-xl border p-5 mb-4 " + (editMode === "referral" ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200")}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">🤝 人材紹介</h2>
+              {editingReferral ? (
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.hasReferralContract ?? false}
+                    onChange={e => set("hasReferralContract", e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  紹介契約あり
+                </label>
+              ) : (
+                company.hasReferralContract
+                  ? <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-medium">紹介契約あり</span>
+                  : <span className="text-xs text-gray-400">紹介契約なし</span>
+              )}
+            </div>
+
+            {/* 紹介単価 */}
+            <div className="mb-5">
+              <div className="text-xs text-gray-400 mb-2">紹介単価</div>
+              {!editingReferral && (company.referralFees ?? []).length === 0 && (
+                <p className="text-sm text-gray-400">未登録</p>
+              )}
+              {(editingReferral ? form.referralFees ?? [] : company.referralFees ?? []).map((fee, i) => (
+                <div key={i} className="flex items-center gap-2 mb-1.5">
+                  {editingReferral ? (
+                    <>
+                      <input
+                        value={fee.condition}
+                        onChange={e => { const arr = [...(form.referralFees ?? [])]; arr[i] = { ...arr[i], condition: e.target.value }; set("referralFees", arr) }}
+                        className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm text-gray-900"
+                        placeholder="例: 〜39歳 / 経験者"
+                      />
+                      <input
+                        type="number"
+                        value={fee.amount ?? ""}
+                        onChange={e => { const arr = [...(form.referralFees ?? [])]; arr[i] = { ...arr[i], amount: e.target.value === "" ? null : Number(e.target.value) }; set("referralFees", arr) }}
+                        className="w-32 border border-gray-200 rounded px-2 py-1 text-sm text-right text-gray-900"
+                        placeholder="金額"
+                      />
+                      <button type="button" onClick={() => set("referralFees", (form.referralFees ?? []).filter((_, j) => j !== i))} className="text-red-400 text-xs hover:text-red-600">削除</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-sm text-gray-600 flex-1">{fee.condition || "-"}</span>
+                      <span className="text-sm font-bold text-emerald-700">{fee.amount != null ? "¥" + fmt(fee.amount) : "-"}</span>
+                    </>
+                  )}
+                </div>
+              ))}
+              {editingReferral && (
+                <button type="button" onClick={() => set("referralFees", [...(form.referralFees ?? []), { condition: "", amount: null }])} className="text-xs text-blue-600 hover:underline">＋ 単価を追加</button>
+              )}
+            </div>
+
+            {/* 待遇・環境 */}
+            <div className="mb-5 pt-4 border-t border-gray-100">
+              <div className="text-xs font-medium text-gray-600 mb-3">待遇・環境</div>
+              <div className="grid grid-cols-3 gap-4">
+                {COND2_ENV.map(item => (
+                  <Field key={item.key} label={item.label}>
+                    {editingReferral ? (
+                      <select
+                        value={formVal[item.key] === true ? "true" : formVal[item.key] === false ? "false" : ""}
+                        onChange={e => set(item.key, e.target.value === "" ? null : e.target.value === "true")}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+                      >
+                        <option value="">未入力</option>
+                        <option value="true">{item.yes}</option>
+                        <option value="false">{item.no}</option>
+                      </select>
+                    ) : (
+                      compVal[item.key] === true
+                        ? <span className="text-xs px-2 py-1 rounded-full font-medium bg-green-100 text-green-800">{item.yes}</span>
+                        : compVal[item.key] === false
+                          ? <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-600">{item.no}</span>
+                          : <span className="text-sm text-gray-300">-</span>
+                    )}
+                  </Field>
+                ))}
+              </div>
+            </div>
+
+            {/* 受け入れ可否 */}
+            <div className="mb-5 pt-4 border-t border-gray-100">
+              <div className="text-xs font-medium text-gray-600 mb-3">受け入れ可否</div>
+              <div className="grid grid-cols-4 gap-4">
+                {COND3_ACCEPT.map(item => (
+                  <Field key={item.key} label={item.label}>
+                    {editingReferral ? (
+                      <select
+                        value={(formVal[item.key] as string) ?? ""}
+                        onChange={e => set(item.key, e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900"
+                      >
+                        {COND3_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      (() => {
+                        const v = compVal[item.key] as string | null
+                        return v && COND3_MAP[v]
+                          ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + COND3_MAP[v].cls}>{COND3_MAP[v].label}</span>
+                          : <span className="text-sm text-gray-300">-</span>
+                      })()
+                    )}
+                  </Field>
+                ))}
+              </div>
+            </div>
+
+            {/* 採用基準 */}
+            <div className="mb-5 pt-4 border-t border-gray-100">
+              <div className="text-xs font-medium text-gray-600 mb-3">採用基準</div>
+              <div className="grid grid-cols-5 gap-4">
+                {COND2_STANDARD.map(item => (
+                  <Field key={item.key} label={item.label}>
+                    {editingReferral ? (
+                      <select
+                        value={formVal[item.key] === true ? "true" : formVal[item.key] === false ? "false" : ""}
+                        onChange={e => set(item.key, e.target.value === "" ? null : e.target.value === "true")}
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900"
+                      >
+                        <option value="">未入力</option>
+                        <option value="true">{item.yes}</option>
+                        <option value="false">{item.no}</option>
+                      </select>
+                    ) : (
+                      compVal[item.key] === true
+                        ? <span className="text-xs px-2 py-1 rounded-full font-medium bg-orange-100 text-orange-800">{item.yes}</span>
+                        : compVal[item.key] === false
+                          ? <span className="text-xs px-2 py-1 rounded-full font-medium bg-gray-100 text-gray-600">{item.no}</span>
+                          : <span className="text-sm text-gray-300">-</span>
+                    )}
+                  </Field>
+                ))}
+                {CONDTEXT_SHORT.map(item => (
+                  <Field key={item.key} label={item.label}>
+                    {editingReferral ? (
+                      <input
+                        value={(formVal[item.key] as string) ?? ""}
+                        onChange={e => set(item.key, e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900"
+                        placeholder="例: 25〜60歳"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-900">{(compVal[item.key] as string) || "-"}</p>
+                    )}
+                  </Field>
+                ))}
+              </div>
+            </div>
+
+            {/* 求める人物像・その他 */}
+            <div className="pt-4 border-t border-gray-100">
+              <div className="text-xs font-medium text-gray-600 mb-3">求める人物像・その他</div>
+              <div className="grid grid-cols-2 gap-4">
+                {CONDTEXT_LONG.map(item => (
+                  <Field key={item.key} label={item.label}>
+                    {editingReferral ? (
+                      <textarea
+                        value={(formVal[item.key] as string) ?? ""}
+                        onChange={e => set(item.key, e.target.value)}
+                        rows={3}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{(compVal[item.key] as string) || "-"}</p>
+                    )}
+                  </Field>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* メモ */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">メモ</h2>
+            {editing
+              ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+              : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
+          </div>
+
+          {/* 制作案件 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">🎨 制作案件</h2>
+
+            {canTask && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-5">
+                <div className="text-xs font-medium text-gray-600 mb-3">制作依頼を起票</div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">案件名 <span className="text-red-400">*</span></label>
+                    <input value={taskForm.name} onChange={e => setTaskForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 求人LP新規制作" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">種別</label>
+                    <select value={taskForm.type} onChange={e => setTaskForm(f => ({ ...f, type: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                      <option value="new">新規</option>
+                      <option value="revise">修正</option>
+                      <option value="renewal">リニューアル</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">優先度</label>
+                    <select value={taskForm.priority} onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                      <option value="high">高</option>
+                      <option value="medium">中</option>
+                      <option value="low">低</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">納期</label>
+                    <input type="date" value={taskForm.dueDate} onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs text-gray-400 mb-1">メモ・依頼内容</label>
+                    <textarea value={taskForm.memo} onChange={e => setTaskForm(f => ({ ...f, memo: e.target.value }))} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="制作担当への依頼内容・参考情報など" />
+                  </div>
+                </div>
+                <button onClick={handleCreateTask} disabled={taskLoading || !taskForm.name.trim()} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+                  {taskLoading ? "起票中..." : "＋ 制作依頼を起票"}
+                </button>
+              </div>
+            )}
+
+            <div className="text-xs font-medium text-gray-600 mb-2">この企業の案件一覧（{tasks.length}件）</div>
+            {tasks.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">まだ制作案件がありません</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">案件名</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">種別</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">優先度</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">ステータス</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">制作担当</th>
+                      <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">納期</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {tasks.map(t => (
+                      <tr key={t.id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-gray-900 font-medium">
+                          <a href={"/production/" + t.id} className="hover:text-blue-600 hover:underline">{t.name}</a>
+                          {t.memo && <div className="text-xs text-gray-400 font-normal mt-0.5 whitespace-pre-wrap">{t.memo}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{TASK_TYPE_LABELS[t.type] ?? t.type}</td>
+                        <td className="px-3 py-2">
+                          <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (TASK_PRIORITY_LABELS[t.priority]?.cls ?? "")}>{TASK_PRIORITY_LABELS[t.priority]?.label ?? t.priority}</span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (TASK_STATUS_LABELS[t.status]?.cls ?? "")}>{TASK_STATUS_LABELS[t.status]?.label ?? t.status}</span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{t.assignee ? t.assignee.name : <span className="text-gray-300">未割当</span>}</td>
+                        <td className="px-3 py-2 text-gray-600">{t.dueDate ? t.dueDate.slice(0, 10) : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>
