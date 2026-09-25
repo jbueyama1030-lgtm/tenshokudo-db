@@ -50,6 +50,7 @@ type Report = {
     uuCoverage: number | null
     rates: FunnelRates
     applyPerUu: number | null
+    entryBreakdown: { tel: number; web: number; unknown: number }
     statusBreakdown: Record<string, number>
   }
   monthly: MonthlyPoint[]
@@ -258,7 +259,15 @@ export default function CompanyReportPage() {
                 <h2 className="text-base font-bold mb-3">期間の実績</h2>
                 <div className="grid grid-cols-4 border border-gray-300">
                   {[
-                    { label: "応募", value: report.total.counts.apply, sub: uuReliable ? `実人数 ${num(report.total.uu)}人` : null },
+                    {
+                      label: "応募",
+                      value: report.total.counts.apply,
+                      sub: [
+                        `Web ${num(report.total.entryBreakdown.web)}件 ／ TEL ${num(report.total.entryBreakdown.tel)}件`
+                          + (report.total.entryBreakdown.unknown > 0 ? ` ／ 不明 ${num(report.total.entryBreakdown.unknown)}件` : ""),
+                        uuReliable ? `実人数 ${num(report.total.uu)}人` : null,
+                      ].filter(Boolean).join("\n"),
+                    },
                     { label: "面接設定", value: report.total.counts.interviewSet, sub: null },
                     { label: "面接実施", value: report.total.counts.interviewDone, sub: null },
                     { label: "入社", value: report.total.counts.hired, sub: null },
@@ -266,7 +275,7 @@ export default function CompanyReportPage() {
                     <div key={c.label} className={"px-4 py-3 " + (i > 0 ? "border-l border-gray-300" : "")}>
                       <div className="text-xs text-gray-500">{c.label}</div>
                       <div className="text-2xl font-bold tabular-nums">{num(c.value)}<span className="text-sm font-normal ml-0.5">件</span></div>
-                      {c.sub && <div className="text-[11px] text-gray-500">{c.sub}</div>}
+                      {c.sub && <div className="text-[11px] text-gray-500 whitespace-pre-line">{c.sub}</div>}
                     </div>
                   ))}
                 </div>
