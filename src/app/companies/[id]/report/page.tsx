@@ -1,3 +1,4 @@
+// 置き場所: src/app/companies/[id]/report/page.tsx
 "use client"
 import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
@@ -56,7 +57,25 @@ type Report = {
   monthly: MonthlyPoint[]
   comparisons: { area: Comparison; size: Comparison }
   notes: string[]
+  articleComparison?: ArticleComparison
 }
+
+type FeatureRow = { feature: string; own: boolean; topRate: number; allRate: number; gap: number }
+type ArticleComparison =
+  | {
+      available: true
+      scopeLabel: string
+      peerCount: number
+      topCount: number
+      ownTitle: string | null
+      ownFeatures: string[]
+      pageUpdatedAt: string | null
+      rows: FeatureRow[]
+    }
+  | { available: false; reason: string }
+
+/** レポートに表示する記事の特徴の行数 */
+const ARTICLE_ROWS_SHOWN = 10
 
 type InsightSection = { key: string; title: string; text: string | null; skippedReason: string | null }
 type ReportInsight = { sections: InsightSection[]; model: string | null; generatedAt: string }
@@ -328,6 +347,46 @@ export default function CompanyReportPage() {
                   {size && !size.available && <div>{size.label}：{size.reason}</div>}
                 </div>
               </section>
+
+              {/* 2-2. 記事の打ち出し */}
+              {report.articleComparison && (
+                <section className="report-section mb-8">
+                  <h2 className="text-base font-bold mb-1">記事の打ち出し</h2>
+                  {report.articleComparison.available ? (
+                    <>
+                      <p className="text-xs text-gray-500 mb-3">
+                        {report.articleComparison.scopeLabel}のうち、応募が一定数ある{report.articleComparison.peerCount}社を入社率で並べ、
+                        上位{report.articleComparison.topCount}社が打ち出している特徴と比べています。上位企業ほど打ち出している割合が高い順です。
+                      </p>
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="border-y border-gray-900">
+                            <th className="text-left py-2 pr-2 font-medium">特徴</th>
+                            <th className="text-center py-2 px-2 font-medium w-16">御社</th>
+                            <th className="text-right py-2 px-2 font-medium w-24">上位企業</th>
+                            <th className="text-right py-2 pl-2 font-medium w-24">全体</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.articleComparison.rows.slice(0, ARTICLE_ROWS_SHOWN).map(row => (
+                            <tr key={row.feature} className="border-b border-gray-200">
+                              <td className="py-1.5 pr-2">{row.feature}</td>
+                              <td className="py-1.5 px-2 text-center">{row.own ? "●" : <span className="text-gray-400">—</span>}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums font-bold">{pct(row.topRate, 0)}</td>
+                              <td className="py-1.5 pl-2 text-right tabular-nums">{pct(row.allRate, 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="text-[11px] text-gray-500 mt-2">
+                        ● は御社の記事で打ち出している特徴です。上位企業の傾向を示すもので、打ち出せば入社が増えることを示すものではありません。
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-500">{report.articleComparison.reason}</p>
+                  )}
+                </section>
+              )}
 
               {/* 3. 月次推移 */}
               <section className="report-section mb-8">
