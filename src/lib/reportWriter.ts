@@ -180,7 +180,7 @@ const SYSTEM_PROMPT = `あなたは、タクシー業界専門の求人媒体「
 - 記事の特徴と成果の関係は傾向であって因果ではありません。「〜を打ち出せば入社が増える」とは書かず、「上位企業では〜を打ち出している割合が高い」の形で書いてください。
 - 直近の月には選考結果が出ていない応募者が含まれます。【事実】に「注意」がある場合は、面接実施や入社の件数・率の低さを確定した弱点として書かず、「選考中の応募者を含むため今後変動する可能性があります」という前提を添えてください。
 - 各セクションは指定の文字数以内で、箇条書きや記号を使わず文章で書いてください。
-- 出力は指定されたキーだけを持つJSONオブジェクトのみです。前置きやコードブロックは付けないでください。`
+- 文章の中で半角のダブルクォートは使わず、強調したい語は「」で囲んでください。`
 
 export async function writeInsight(
   report: CompanyFunnelReport,
@@ -223,26 +223,40 @@ ${facts}
 【書いてほしいセクション】
 ${spec}
 
-次の形のJSONだけを出力してください:
-{${targets.map(t => `"${t.key}": "..."`).join(", ")}}`
+write_insight ツールを使って、各セクションの文章を入力してください。`
+
+  // 出力の形をツールの入力スキーマで固定する（JSONの崩れで失敗しないように）
+  const properties: Record<string, { type: "string"; description: string }> = {}
+  for (const t of targets) {
+    properties[t.key] = { type: "string", description: `${t.title}（${t.maxChars}字以内）` }
+  }
 
   const client = new Anthropic() // ANTHROPIC_API_KEY を環境変数から読む
   const msg = await client.messages.create({
     model: MODEL,
-    max_tokens: 1000,
+    max_tokens: 1500,
     system: SYSTEM_PROMPT,
+    tools: [
+      {
+        name: "write_insight",
+        description: "レポートの所見を、セクションごとの文章として記録する",
+        input_schema: {
+          type: "object",
+          properties,
+          required: targets.map(t => t.key),
+        },
+      },
+    ],
+    tool_choice: { type: "tool", name: "write_insight" },
     messages: [{ role: "user", content: userPrompt }],
   })
 
-  const raw = msg.content.map(b => (b.type === "text" ? b.text : "")).join("")
-  const cleaned = raw.replace(/```json|```/g, "").trim()
-
-  let parsed: Record<string, unknown>
-  try {
-    parsed = JSON.parse(cleaned)
-  } catch {
+  const toolUse = msg.content.find(b => b.type === "tool_use")
+  if (!toolUse || toolUse.type !== "tool_use") {
+    console.warn("[reportWriter] tool_use が返らなかった", { stop_reason: msg.stop_reason })
     throw new Error("AIの出力を読み取れませんでした")
   }
+  const parsed = (toolUse.input ?? {}) as Record<string, unknown>
 
   // ---- 検証（数値の不一致があるセクションは載せない） ----
   const allowed = numbersIn(facts)
