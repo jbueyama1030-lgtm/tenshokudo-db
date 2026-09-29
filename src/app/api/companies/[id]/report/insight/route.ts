@@ -1,9 +1,11 @@
+// 置き場所: src/app/api/companies/[id]/report/insight/route.ts
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { isInAgencyScope } from "@/lib/permissions"
 import { analyzeCompanyFunnel, type YearMonth } from "@/lib/funnelAnalysis"
 import { writeInsight } from "@/lib/reportWriter"
+import { analyzeArticleComparison } from "@/lib/articleAnalysis"
 
 function parseYm(s: unknown): YearMonth | null {
   if (typeof s !== "string") return null
@@ -53,7 +55,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const report = await analyzeCompanyFunnel(company.id, { from, to })
     if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const insight = await writeInsight(report)
+    const article = await analyzeArticleComparison(company.id, { from, to })
+    const insight = await writeInsight(report, article)
     return NextResponse.json(insight)
   } catch (e) {
     console.error("[report/insight] failed", e)

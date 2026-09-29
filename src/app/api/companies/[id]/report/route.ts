@@ -1,3 +1,4 @@
+// 置き場所: src/app/api/companies/[id]/report/route.ts
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
@@ -11,6 +12,7 @@ import {
   type Period,
   type YearMonth,
 } from "@/lib/funnelAnalysis"
+import { analyzeArticleComparison } from "@/lib/articleAnalysis"
 
 /** 期間未指定時の月数 */
 const DEFAULT_MONTHS = 6
@@ -103,7 +105,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const report = await analyzeCompanyFunnel(company.id, period)
     if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 })
-    return NextResponse.json(report)
+    const articleComparison = await analyzeArticleComparison(company.id, period)
+    return NextResponse.json({ ...report, articleComparison })
   } catch (e) {
     console.error("[report] analyzeCompanyFunnel failed", e)
     return NextResponse.json({ error: "レポートの集計に失敗しました" }, { status: 500 })

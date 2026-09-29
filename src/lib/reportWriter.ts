@@ -1,6 +1,11 @@
+// 置き場所: src/lib/reportWriter.ts
 import Anthropic from "@anthropic-ai/sdk"
 import { addMonths, currentYmJst, ymKey } from "@/lib/funnelAnalysis"
 import type { CompanyFunnelReport, Comparison, FunnelRates } from "@/lib/funnelAnalysis"
+import type { ArticleComparison } from "@/lib/articleAnalysis"
+
+/** AIに渡す記事の特徴の行数（差の大きい順） */
+const ARTICLE_ROWS_FOR_AI = 8
 
 // =====================================================================
 // 設定
@@ -22,7 +27,7 @@ const SECTIONS = [
   { key: "strengths", title: "強み", maxChars: 80, needsComparison: true,
     instruction: "比較対象の平均を上回っている段階を挙げる。上回っている点が無ければ、比較的良い点を1つ挙げる。" },
   { key: "issues", title: "課題と次の打ち手", maxChars: 120, needsComparison: true,
-    instruction: "比較対象の平均を下回っている段階を挙げ、改善の方向性を1つ提案する。原因は断定しない。選考中の応募者を含む月の影響がありうる場合はその旨に触れる。" },
+    instruction: "比較対象の平均を下回っている段階を挙げ、改善の方向性を1つ提案する。原因は断定しない。選考中の応募者を含む月の影響がありうる場合はその旨に触れる。【記事の打ち出し】がある場合は、御社が打ち出していない特徴のうち上位企業で割合が高いものに触れてよい。" },
 ] as const
 
 type SectionKey = (typeof SECTIONS)[number]["key"]
@@ -67,7 +72,7 @@ const RATE_LABELS: { key: keyof FunnelRates; label: string }[] = [
 ]
 
 /** AIに渡す「事実」テキスト。ここに無い数値はAIに使わせない */
-function buildFacts(r: CompanyFunnelReport): string {
+function buildFacts(r: CompanyFunnelReport, article: ArticleComparison | null): string {
   const c = r.total.counts
   const uuOk = r.total.uuCoverage != null && r.total.uuCoverage >= 0.9
   const comps: Comparison[] = [r.comparisons.area, r.comparisons.size]
@@ -127,6 +132,16 @@ function buildFacts(r: CompanyFunnelReport): string {
     )
   }
 
+  if (article?.available) {
+    lines.push("")
+    lines.push(`【記事の打ち出し】比較対象: ${article.scopeLabel} ${article.peerCount}社（うち入社率の上位 ${article.topCount}社）`)
+    for (const row of article.rows.slice(0, ARTICLE_ROWS_FOR_AI)) {
+      lines.push(
+        `${row.feature}: 御社 ${row.own ? "打ち出している" : "打ち出していない"} / 上位企業 ${pct(row.topRate)} / 全体 ${pct(row.allRate)}`,
+      )
+    }
+  }
+
   return lines.join("\n")
 }
 
@@ -162,11 +177,15 @@ const SYSTEM_PROMPT = `あなたは、タクシー業界専門の求人媒体「
 - 読み手は顧客企業の採用担当者です。「御社」と呼び、です・ます調で書いてください。
 - 他社の企業名や、個別企業を推測させる表現は使わないでください。
 - 原因は断定せず、「〜の可能性があります」「〜が考えられます」と書いてください。
+- 記事の特徴と成果の関係は傾向であって因果ではありません。「〜を打ち出せば入社が増える」とは書かず、「上位企業では〜を打ち出している割合が高い」の形で書いてください。
 - 直近の月には選考結果が出ていない応募者が含まれます。【事実】に「注意」がある場合は、面接実施や入社の件数・率の低さを確定した弱点として書かず、「選考中の応募者を含むため今後変動する可能性があります」という前提を添えてください。
 - 各セクションは指定の文字数以内で、箇条書きや記号を使わず文章で書いてください。
 - 出力は指定されたキーだけを持つJSONオブジェクトのみです。前置きやコードブロックは付けないでください。`
 
-export async function writeInsight(report: CompanyFunnelReport): Promise<ReportInsight> {
+export async function writeInsight(
+  report: CompanyFunnelReport,
+  article: ArticleComparison | null = null,
+): Promise<ReportInsight> {
   const generatedAt = new Date().toISOString()
 
   // ---- 書かせるセクションを決める（データ不足はAIを呼ばずに省略） ----
@@ -193,7 +212,7 @@ export async function writeInsight(report: CompanyFunnelReport): Promise<ReportI
   }
 
   // ---- AIを呼ぶ ----
-  const facts = buildFacts(report)
+  const facts = buildFacts(report, article)
   const spec = targets
     .map(t => `- "${t.key}"（${t.title}／${t.maxChars}字以内）: ${t.instruction}`)
     .join("\n")
