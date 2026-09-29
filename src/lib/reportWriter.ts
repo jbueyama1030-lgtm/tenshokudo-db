@@ -36,10 +36,8 @@ const SECTIONS = [
       "【記事の打ち出し】で上位企業に多いが御社の記事に無い特徴は、記事に書かれていない以上、実施しているかは分からないため「該当する制度があれば」と前置きして触れる。" },
 ] as const
 
-type SectionKey = (typeof SECTIONS)[number]["key"]
-
 export type InsightSection = {
-  key: SectionKey
+  key: string
   title: string
   /** 生成した文章。省略時は null */
   text: string | null
@@ -57,7 +55,7 @@ export type ReportInsight = {
 // 数値の整形（AIに渡す前にすべて確定させる）
 // =====================================================================
 
-function pct(v: number | null): string {
+export function pct(v: number | null): string {
   return v == null ? "算出不可" : (v * 100).toFixed(1) + "%"
 }
 function diff(own: number | null, other: number | null): string {
@@ -210,15 +208,13 @@ export async function writeInsight(
   article: ArticleComparison | null = null,
   texts: ArticleText[] | null = null,
 ): Promise<ReportInsight> {
-  const generatedAt = new Date().toISOString()
-
   // ---- 書かせるセクションを決める（データ不足はAIを呼ばずに省略） ----
   const hasComparison = report.comparisons.area.available || report.comparisons.size.available
   const tooFew = report.total.counts.apply < MIN_APPLY_FOR_INSIGHT
 
   const hasTexts = !!texts && texts.length > 0
 
-  const plan = SECTIONS.map(s => {
+  const plan: PlannedSection[] = SECTIONS.map(s => {
     if (s.needsArticle) {
       return { ...s, skip: hasTexts ? null as string | null : "転職道の記事データが無いため省略しています。" }
     }
@@ -231,6 +227,34 @@ export async function writeInsight(
     return { ...s, skip: null as string | null }
   })
 
+  // ---- AIを呼ぶ ----
+  const facts = buildFacts(report, article, texts)
+  return generateSections(plan, facts, SYSTEM_PROMPT)
+}
+
+// =====================================================================
+// 共通: セクションの生成と検証（定例報告・新規提案・記事改善で共用）
+// =====================================================================
+
+export type PlannedSection = {
+  key: string
+  title: string
+  maxChars: number
+  instruction: string
+  /** 省略する理由（null なら生成する） */
+  skip: string | null
+}
+
+/**
+ * plan のうち skip が null のセクションだけ AI に書かせ、数値チェックして返す。
+ * 出力の形はツールの入力スキーマで固定する（JSONの崩れで失敗しないように）。
+ */
+export async function generateSections(
+  plan: PlannedSection[],
+  facts: string,
+  systemPrompt: string,
+): Promise<ReportInsight> {
+  const generatedAt = new Date().toISOString()
   const targets = plan.filter(p => p.skip == null)
   if (targets.length === 0) {
     return {
@@ -240,8 +264,6 @@ export async function writeInsight(
     }
   }
 
-  // ---- AIを呼ぶ ----
-  const facts = buildFacts(report, article, texts)
   const spec = targets
     .map(t => `- "${t.key}"（${t.title}／${t.maxChars}字以内）: ${t.instruction}`)
     .join("\n")
@@ -254,7 +276,6 @@ ${spec}
 
 write_insight ツールを使って、各セクションの文章を入力してください。`
 
-  // 出力の形をツールの入力スキーマで固定する（JSONの崩れで失敗しないように）
   const properties: Record<string, { type: "string"; description: string }> = {}
   for (const t of targets) {
     properties[t.key] = { type: "string", description: `${t.title}（${t.maxChars}字以内）` }
@@ -263,8 +284,8 @@ write_insight ツールを使って、各セクションの文章を入力して
   const client = new Anthropic() // ANTHROPIC_API_KEY を環境変数から読む
   const msg = await client.messages.create({
     model: MODEL,
-    max_tokens: 2000,
-    system: SYSTEM_PROMPT,
+    max_tokens: 3000,
+    system: systemPrompt,
     tools: [
       {
         name: "write_insight",

@@ -1,3 +1,4 @@
+// 置き場所: src/app/companies/[id]/page.tsx
 "use client"
 import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
@@ -10,6 +11,7 @@ import {
   canDeleteCompany,
   canCreateTask,
   isProduction,
+  isAgencyUser,
   REFERRAL_FIELDS,
 } from "@/lib/permissions"
 
@@ -355,7 +357,7 @@ export default function CompanyDetailPage() {
   const [form, setForm] = useState<Partial<Company>>({})
   const [loading, setLoading] = useState(false)
   const [userName, setUserName] = useState("")
-  const [session, setSession] = useState<{ user?: { id?: string; role?: string; roles?: string[] } } | null>(null)
+  const [session, setSession] = useState<{ user?: { id?: string; role?: string; roles?: string[]; agencyId?: string | null } } | null>(null)
   const [tasks, setTasks] = useState<ProductionTask[]>([])
   const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
   const [taskLoading, setTaskLoading] = useState(false)
@@ -595,8 +597,12 @@ export default function CompanyDetailPage() {
                 {canReferral && (
                   <button onClick={() => setEditMode("referral")} className={"px-4 py-2 rounded-lg text-sm font-medium " + (canFull ? "border border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 text-white hover:bg-emerald-700")}>🤝 紹介情報を編集</button>
                 )}
-                {/* 採用レポート（閲覧できる人なら誰でも） */}
+                {/* レポート（採用レポート・新規提案は閲覧できる人なら誰でも。記事改善は社内のみ） */}
                 <button onClick={() => router.push("/companies/" + id + "/report")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">📊 採用レポート</button>
+                <button onClick={() => router.push("/companies/" + id + "/proposal")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">📝 新規提案</button>
+                {!isAgencyUser(session) && (
+                  <button onClick={() => router.push("/companies/" + id + "/article-review")} className="px-4 py-2 text-sm border border-amber-300 rounded-lg text-amber-800 hover:bg-amber-50">🛠 記事改善（社内）</button>
+                )}
                 {canDelete && (
                   <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
                 )}

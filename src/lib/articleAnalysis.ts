@@ -47,6 +47,8 @@ export type ArticleComparison =
       peerCount: number
       /** うち上位企業の社数 */
       topCount: number
+      /** 自社の記事データがあるか（新規提案では false のことがある） */
+      hasOwnArticle: boolean
       ownTitle: string | null
       ownFeatures: string[]
       /** 求人ページの更新日時（ISO） */
@@ -65,7 +67,8 @@ export type ArticleComparison =
 
 /**
  * 自社の記事の特徴フラグを、比較グループ（同エリアの掲載企業）の
- * 「入社率上位企業」「全体」の打ち出し率と比べる。
+ * 「入社率上位企業」「全体」の打ち出し率と比べる（定例報告・記事改善用）。
+ * 自社の記事が無ければ unavailable。
  *
  * 注意: これは相関であって因果ではない。
  * 「上位企業は○○を打ち出している割合が高い」までしか言えない。
@@ -76,15 +79,42 @@ export async function analyzeArticleComparison(
 ): Promise<ArticleComparison> {
   const own = await prisma.jobArticle.findUnique({
     where: { companyRef: companyDbId },
-    select: { prefecture: true, features: true, title: true, pageUpdatedAt: true, isListed: true },
+    select: { prefecture: true, features: true, title: true, pageUpdatedAt: true },
   })
   if (!own) {
     return { available: false, reason: "転職道の記事データが未取り込みか、企業IDが紐づいていないため省略" }
   }
+  return analyzeFeatureTrends(
+    {
+      prefecture: own.prefecture,
+      excludeCompanyId: companyDbId,
+      ownFeatures: own.features,
+      ownTitle: own.title,
+      pageUpdatedAt: own.pageUpdatedAt,
+    },
+    period,
+  )
+}
+
+/**
+ * エリアの掲載企業のうち「入社率上位企業」が打ち出している特徴の傾向。
+ * 自社の記事が無い企業（新規提案）でも使えるよう、ownFeatures は null 可。
+ */
+export async function analyzeFeatureTrends(
+  args: {
+    prefecture: string | null
+    excludeCompanyId: string
+    ownFeatures: string[] | null
+    ownTitle?: string | null
+    pageUpdatedAt?: Date | null
+  },
+  period: Period,
+): Promise<ArticleComparison> {
+  const ownFeatures = args.ownFeatures ?? []
 
   // ---- 比較対象（掲載中・企業に紐づいている記事） ----
   const peers = await prisma.jobArticle.findMany({
-    where: { isListed: true, companyRef: { not: null, notIn: [companyDbId] } },
+    where: { isListed: true, companyRef: { not: null, notIn: [args.excludeCompanyId] } },
     select: { companyRef: true, prefecture: true, features: true },
   })
 
@@ -105,8 +135,8 @@ export async function analyzeArticleComparison(
     .filter(p => p.apply >= MIN_APPLY_FOR_RANKING)
 
   // エリアで足りなければ全国
-  let group = own.prefecture ? eligible.filter(p => p.prefecture === own.prefecture) : []
-  let scopeLabel = `${own.prefecture}の掲載企業`
+  let group = args.prefecture ? eligible.filter(p => p.prefecture === args.prefecture) : []
+  let scopeLabel = `${args.prefecture}の掲載企業`
   if (group.length < MIN_PEERS) {
     group = eligible
     scopeLabel = "全国の掲載企業"
@@ -136,7 +166,7 @@ export async function analyzeArticleComparison(
     const allHas = countHas(group, f)
     const topRate = topHas / top.length
     const allRate = allHas / group.length
-    return { feature: f, own: own.features.includes(f), topHas, topRate, allHas, allRate, gap: topRate - allRate }
+    return { feature: f, own: ownFeatures.includes(f), topHas, topRate, allHas, allRate, gap: topRate - allRate }
   })
     .filter(r => r.gap >= MIN_GAP)
     .sort((a, b) => {
@@ -149,9 +179,10 @@ export async function analyzeArticleComparison(
     scopeLabel,
     peerCount: group.length,
     topCount,
-    ownTitle: own.title,
-    ownFeatures: own.features,
-    pageUpdatedAt: own.pageUpdatedAt ? own.pageUpdatedAt.toISOString() : null,
+    hasOwnArticle: args.ownFeatures != null,
+    ownTitle: args.ownTitle ?? null,
+    ownFeatures,
+    pageUpdatedAt: args.pageUpdatedAt ? args.pageUpdatedAt.toISOString() : null,
     rows,
   }
 }
@@ -181,7 +212,10 @@ const TEXT_FIELDS: { column: string; label: string }[] = [
 export type ArticleText = { label: string; text: string; truncated: boolean }
 
 /** 自社の記事本文（長い項目は先頭だけ）。記事が無ければ null */
-export async function loadArticleTexts(companyDbId: string): Promise<ArticleText[] | null> {
+export async function loadArticleTexts(
+  companyDbId: string,
+  maxChars: number = TEXT_MAX_CHARS,
+): Promise<ArticleText[] | null> {
   const article = await prisma.jobArticle.findUnique({
     where: { companyRef: companyDbId },
     select: { data: true },
@@ -192,8 +226,8 @@ export async function loadArticleTexts(companyDbId: string): Promise<ArticleText
   for (const f of TEXT_FIELDS) {
     const raw = (data[f.column] ?? "").replace(/\r/g, "").trim()
     if (!raw) continue
-    const truncated = raw.length > TEXT_MAX_CHARS
-    out.push({ label: f.label, text: truncated ? raw.slice(0, TEXT_MAX_CHARS) : raw, truncated })
+    const truncated = raw.length > maxChars
+    out.push({ label: f.label, text: truncated ? raw.slice(0, maxChars) : raw, truncated })
   }
   return out.length > 0 ? out : null
 }
