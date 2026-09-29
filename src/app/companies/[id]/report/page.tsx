@@ -60,7 +60,15 @@ type Report = {
   articleComparison?: ArticleComparison
 }
 
-type FeatureRow = { feature: string; own: boolean; topRate: number; allRate: number; gap: number }
+type FeatureRow = {
+  feature: string
+  own: boolean
+  topHas: number
+  topRate: number
+  allHas: number
+  allRate: number
+  gap: number
+}
 type ArticleComparison =
   | {
       available: true
@@ -187,6 +195,10 @@ export default function CompanyReportPage() {
   const size = report?.comparisons.size
   const areaOk = area?.available ? area : null
   const sizeOk = size?.available ? size : null
+  // 記事比較（コールバック内でも型が絞り込まれるよう、ローカル変数に取り出す）
+  const ac = report?.articleComparison
+  const acTopCount = ac && ac.available ? ac.topCount : 0
+  const acPeerCount = ac && ac.available ? ac.peerCount : 0
 
   // 月次グラフの最大値（応募）
   const maxApply = report ? Math.max(1, ...report.monthly.map(m => m.counts.apply)) : 1
@@ -356,15 +368,19 @@ export default function CompanyReportPage() {
                     <>
                       <p className="text-xs text-gray-500 mb-3">
                         {report.articleComparison.scopeLabel}のうち、応募が一定数ある{report.articleComparison.peerCount}社を入社率で並べ、
-                        上位{report.articleComparison.topCount}社が打ち出している特徴と比べています。上位企業ほど打ち出している割合が高い順です。
+                        上位{report.articleComparison.topCount}社が打ち出している特徴と比べています。
+                        上位企業と全体の差が5ポイント以上ある特徴だけを、御社の記事に無いもの → あるものの順に並べています。
                       </p>
+                      {report.articleComparison.rows.length === 0 ? (
+                        <p className="text-xs text-gray-500">上位企業と全体で、打ち出し方に目立った差のある特徴はありませんでした。</p>
+                      ) : (
                       <table className="w-full text-sm border-collapse">
                         <thead>
                           <tr className="border-y border-gray-900">
                             <th className="text-left py-2 pr-2 font-medium">特徴</th>
                             <th className="text-center py-2 px-2 font-medium w-16">御社</th>
-                            <th className="text-right py-2 px-2 font-medium w-24">上位企業</th>
-                            <th className="text-right py-2 pl-2 font-medium w-24">全体</th>
+                            <th className="text-right py-2 px-2 font-medium w-32">上位企業</th>
+                            <th className="text-right py-2 pl-2 font-medium w-32">全体</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -372,12 +388,19 @@ export default function CompanyReportPage() {
                             <tr key={row.feature} className="border-b border-gray-200">
                               <td className="py-1.5 pr-2">{row.feature}</td>
                               <td className="py-1.5 px-2 text-center">{row.own ? "●" : <span className="text-gray-400">—</span>}</td>
-                              <td className="py-1.5 px-2 text-right tabular-nums font-bold">{pct(row.topRate, 0)}</td>
-                              <td className="py-1.5 pl-2 text-right tabular-nums">{pct(row.allRate, 0)}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums">
+                                <span className="font-bold">{pct(row.topRate, 0)}</span>
+                                <span className="text-[10px] text-gray-500 ml-1">（{row.topHas}/{acTopCount}社）</span>
+                              </td>
+                              <td className="py-1.5 pl-2 text-right tabular-nums">
+                                {pct(row.allRate, 0)}
+                                <span className="text-[10px] text-gray-500 ml-1">（{row.allHas}/{acPeerCount}社）</span>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
+                      )}
                       <p className="text-[11px] text-gray-500 mt-2">
                         ● は御社の記事で打ち出している特徴です。上位企業の傾向を示すもので、打ち出せば入社が増えることを示すものではありません。
                       </p>

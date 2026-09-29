@@ -13,6 +13,10 @@ export const MIN_APPLY_FOR_RANKING = 10
 export const MIN_PEERS = 15
 /** 上位企業 = 入社率の上位この割合 */
 export const TOP_SHARE = 1 / 3
+/** 上位企業と全体の打ち出し率の差がこれ未満の特徴は出さない（傾向として弱いため） */
+export const MIN_GAP = 0.05
+/** AIに渡す記事本文の1項目あたりの最大文字数 */
+const TEXT_MAX_CHARS = 500
 
 // =====================================================================
 // 型
@@ -22,8 +26,12 @@ export type FeatureRow = {
   feature: string
   /** 自社の記事で打ち出しているか */
   own: boolean
+  /** 上位企業のうち打ち出している社数 */
+  topHas: number
   /** 上位企業のうち打ち出している割合（0〜1） */
   topRate: number
+  /** 比較グループ全体のうち打ち出している社数 */
+  allHas: number
   /** 比較グループ全体のうち打ち出している割合（0〜1） */
   allRate: number
   /** topRate − allRate（上位企業ほど打ち出している度合い） */
@@ -43,7 +51,10 @@ export type ArticleComparison =
       ownFeatures: string[]
       /** 求人ページの更新日時（ISO） */
       pageUpdatedAt: string | null
-      /** gap の大きい順 */
+      /**
+       * 差（gap）が MIN_GAP 以上の特徴だけ。
+       * 並び順: 御社が打ち出していない特徴 → 打ち出している特徴、それぞれ gap の大きい順
+       */
       rows: FeatureRow[]
     }
   | { available: false; reason: string }
@@ -117,14 +128,21 @@ export async function analyzeArticleComparison(
   const topCount = Math.ceil(ranked.length * TOP_SHARE)
   const top = ranked.slice(0, topCount)
 
-  const share = (list: { features: string[] }[], f: string) =>
-    list.filter(x => x.features.includes(f)).length / list.length
+  const countHas = (list: { features: string[] }[], f: string) =>
+    list.filter(x => x.features.includes(f)).length
 
   const rows: FeatureRow[] = FEATURE_COLUMNS.map(f => {
-    const topRate = share(top, f)
-    const allRate = share(group, f)
-    return { feature: f, own: own.features.includes(f), topRate, allRate, gap: topRate - allRate }
-  }).sort((a, b) => b.gap - a.gap)
+    const topHas = countHas(top, f)
+    const allHas = countHas(group, f)
+    const topRate = topHas / top.length
+    const allRate = allHas / group.length
+    return { feature: f, own: own.features.includes(f), topHas, topRate, allHas, allRate, gap: topRate - allRate }
+  })
+    .filter(r => r.gap >= MIN_GAP)
+    .sort((a, b) => {
+      if (a.own !== b.own) return a.own ? 1 : -1
+      return b.gap - a.gap
+    })
 
   return {
     available: true,
@@ -136,4 +154,46 @@ export async function analyzeArticleComparison(
     pageUpdatedAt: own.pageUpdatedAt ? own.pageUpdatedAt.toISOString() : null,
     rows,
   }
+}
+
+// =====================================================================
+// 記事本文（AIの改善提案用）
+// =====================================================================
+
+/** AIに読ませる記事の項目（CSVの列名 → 表示名） */
+const TEXT_FIELDS: { column: string; label: string }[] = [
+  { column: "タイトル", label: "タイトル" },
+  { column: "ピックアップタイトル", label: "ピックアップ見出し" },
+  { column: "ピックアップ本文", label: "ピックアップ本文" },
+  { column: "アピールポイントタイトル", label: "アピールポイント見出し" },
+  { column: "アピールポイント本文", label: "アピールポイント本文" },
+  { column: "会社の特徴1タイトル", label: "会社の特徴1 見出し" },
+  { column: "会社の特徴1", label: "会社の特徴1 本文" },
+  { column: "会社の特徴2タイトル", label: "会社の特徴2 見出し" },
+  { column: "会社の特徴2", label: "会社の特徴2 本文" },
+  { column: "給与", label: "給与" },
+  { column: "待遇", label: "待遇" },
+  { column: "休日", label: "休日" },
+  { column: "応募資格", label: "応募資格" },
+  { column: "求職者へメッセージ", label: "求職者へのメッセージ" },
+]
+
+export type ArticleText = { label: string; text: string; truncated: boolean }
+
+/** 自社の記事本文（長い項目は先頭だけ）。記事が無ければ null */
+export async function loadArticleTexts(companyDbId: string): Promise<ArticleText[] | null> {
+  const article = await prisma.jobArticle.findUnique({
+    where: { companyRef: companyDbId },
+    select: { data: true },
+  })
+  if (!article) return null
+  const data = (article.data ?? {}) as Record<string, string>
+  const out: ArticleText[] = []
+  for (const f of TEXT_FIELDS) {
+    const raw = (data[f.column] ?? "").replace(/\r/g, "").trim()
+    if (!raw) continue
+    const truncated = raw.length > TEXT_MAX_CHARS
+    out.push({ label: f.label, text: truncated ? raw.slice(0, TEXT_MAX_CHARS) : raw, truncated })
+  }
+  return out.length > 0 ? out : null
 }

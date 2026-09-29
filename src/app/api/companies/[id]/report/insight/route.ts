@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { isInAgencyScope } from "@/lib/permissions"
 import { analyzeCompanyFunnel, type YearMonth } from "@/lib/funnelAnalysis"
 import { writeInsight } from "@/lib/reportWriter"
-import { analyzeArticleComparison } from "@/lib/articleAnalysis"
+import { analyzeArticleComparison, loadArticleTexts } from "@/lib/articleAnalysis"
 
 function parseYm(s: unknown): YearMonth | null {
   if (typeof s !== "string") return null
@@ -55,8 +55,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const report = await analyzeCompanyFunnel(company.id, { from, to })
     if (!report) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const article = await analyzeArticleComparison(company.id, { from, to })
-    const insight = await writeInsight(report, article)
+    const [article, texts] = await Promise.all([
+      analyzeArticleComparison(company.id, { from, to }),
+      loadArticleTexts(company.id),
+    ])
+    const insight = await writeInsight(report, article, texts)
     return NextResponse.json(insight)
   } catch (e) {
     console.error("[report/insight] failed", e)

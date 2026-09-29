@@ -2,7 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { addMonths, currentYmJst, ymKey } from "@/lib/funnelAnalysis"
 import type { CompanyFunnelReport, Comparison, FunnelRates } from "@/lib/funnelAnalysis"
-import type { ArticleComparison } from "@/lib/articleAnalysis"
+import type { ArticleComparison, ArticleText } from "@/lib/articleAnalysis"
 
 /** AIに渡す記事の特徴の行数（差の大きい順） */
 const ARTICLE_ROWS_FOR_AI = 8
@@ -20,14 +20,20 @@ export const MIN_APPLY_FOR_INSIGHT = 10
 /**
  * セクション定義（コード側で固定。AIは増減できない）
  * needsComparison: 比較対象が1つも無いときは書かせない
+ * needsArticle: 記事本文が無いときは書かせない（応募件数が少なくても書ける）
  */
 const SECTIONS = [
-  { key: "overview", title: "全体の傾向", maxChars: 100, needsComparison: false,
+  { key: "overview", title: "全体の傾向", maxChars: 100, needsComparison: false, needsArticle: false,
     instruction: "期間全体の応募から入社までの流れを要約する。" },
-  { key: "strengths", title: "強み", maxChars: 80, needsComparison: true,
+  { key: "strengths", title: "強み", maxChars: 80, needsComparison: true, needsArticle: false,
     instruction: "比較対象の平均を上回っている段階を挙げる。上回っている点が無ければ、比較的良い点を1つ挙げる。" },
-  { key: "issues", title: "課題と次の打ち手", maxChars: 120, needsComparison: true,
+  { key: "issues", title: "課題と次の打ち手", maxChars: 120, needsComparison: true, needsArticle: false,
     instruction: "比較対象の平均を下回っている段階を挙げ、改善の方向性を1つ提案する。原因は断定しない。選考中の応募者を含む月の影響がありうる場合はその旨に触れる。【記事の打ち出し】がある場合は、御社が打ち出していない特徴のうち上位企業で割合が高いものに触れてよい。" },
+  { key: "article", title: "記事の改善ポイント", maxChars: 220, needsComparison: false, needsArticle: true,
+    instruction:
+      "【記事本文】を読み、求職者に伝わりにくい点・古い情報（過去の年号や終了した可能性のあるキャンペーン等）・埋もれている魅力を指摘し、" +
+      "改善案を2つまで具体的に書く。うち1つは見出しやタイトルの書き換え例を「」で示す。" +
+      "【記事の打ち出し】で上位企業に多いが御社の記事に無い特徴は、記事に書かれていない以上、実施しているかは分からないため「該当する制度があれば」と前置きして触れる。" },
 ] as const
 
 type SectionKey = (typeof SECTIONS)[number]["key"]
@@ -72,7 +78,11 @@ const RATE_LABELS: { key: keyof FunnelRates; label: string }[] = [
 ]
 
 /** AIに渡す「事実」テキスト。ここに無い数値はAIに使わせない */
-function buildFacts(r: CompanyFunnelReport, article: ArticleComparison | null): string {
+function buildFacts(
+  r: CompanyFunnelReport,
+  article: ArticleComparison | null,
+  texts: ArticleText[] | null,
+): string {
   const c = r.total.counts
   const uuOk = r.total.uuCoverage != null && r.total.uuCoverage >= 0.9
   const comps: Comparison[] = [r.comparisons.area, r.comparisons.size]
@@ -135,10 +145,22 @@ function buildFacts(r: CompanyFunnelReport, article: ArticleComparison | null): 
   if (article?.available) {
     lines.push("")
     lines.push(`【記事の打ち出し】比較対象: ${article.scopeLabel} ${article.peerCount}社（うち入社率の上位 ${article.topCount}社）`)
+    if (article.rows.length === 0) {
+      lines.push("上位企業と全体で打ち出し方に目立った差のある特徴は無い")
+    }
     for (const row of article.rows.slice(0, ARTICLE_ROWS_FOR_AI)) {
       lines.push(
-        `${row.feature}: 御社 ${row.own ? "打ち出している" : "打ち出していない"} / 上位企業 ${pct(row.topRate)} / 全体 ${pct(row.allRate)}`,
+        `${row.feature}: 御社 ${row.own ? "打ち出している" : "打ち出していない"} / 上位企業 ${pct(row.topRate)}（${row.topHas}/${article.topCount}社） / 全体 ${pct(row.allRate)}`,
       )
+    }
+  }
+
+  if (texts && texts.length > 0) {
+    lines.push("")
+    lines.push("【記事本文】（御社の転職道の記事。長い項目は先頭のみ）")
+    for (const t of texts) {
+      lines.push(`＜${t.label}＞`)
+      lines.push(t.text + (t.truncated ? "（以下略）" : ""))
     }
   }
 
@@ -179,12 +201,14 @@ const SYSTEM_PROMPT = `あなたは、タクシー業界専門の求人媒体「
 - 原因は断定せず、「〜の可能性があります」「〜が考えられます」と書いてください。
 - 記事の特徴と成果の関係は傾向であって因果ではありません。「〜を打ち出せば入社が増える」とは書かず、「上位企業では〜を打ち出している割合が高い」の形で書いてください。
 - 直近の月には選考結果が出ていない応募者が含まれます。【事実】に「注意」がある場合は、面接実施や入社の件数・率の低さを確定した弱点として書かず、「選考中の応募者を含むため今後変動する可能性があります」という前提を添えてください。
+- 【記事本文】に書かれていない制度や数値を、御社にあるものとして書かないでください。
 - 各セクションは指定の文字数以内で、箇条書きや記号を使わず文章で書いてください。
 - 文章の中で半角のダブルクォートは使わず、強調したい語は「」で囲んでください。`
 
 export async function writeInsight(
   report: CompanyFunnelReport,
   article: ArticleComparison | null = null,
+  texts: ArticleText[] | null = null,
 ): Promise<ReportInsight> {
   const generatedAt = new Date().toISOString()
 
@@ -192,7 +216,12 @@ export async function writeInsight(
   const hasComparison = report.comparisons.area.available || report.comparisons.size.available
   const tooFew = report.total.counts.apply < MIN_APPLY_FOR_INSIGHT
 
+  const hasTexts = !!texts && texts.length > 0
+
   const plan = SECTIONS.map(s => {
+    if (s.needsArticle) {
+      return { ...s, skip: hasTexts ? null as string | null : "転職道の記事データが無いため省略しています。" }
+    }
     if (tooFew) {
       return { ...s, skip: `期間内の応募が${MIN_APPLY_FOR_INSIGHT}件未満のため省略しています。` }
     }
@@ -212,7 +241,7 @@ export async function writeInsight(
   }
 
   // ---- AIを呼ぶ ----
-  const facts = buildFacts(report, article)
+  const facts = buildFacts(report, article, texts)
   const spec = targets
     .map(t => `- "${t.key}"（${t.title}／${t.maxChars}字以内）: ${t.instruction}`)
     .join("\n")
@@ -234,7 +263,7 @@ write_insight ツールを使って、各セクションの文章を入力して
   const client = new Anthropic() // ANTHROPIC_API_KEY を環境変数から読む
   const msg = await client.messages.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 2000,
     system: SYSTEM_PROMPT,
     tools: [
       {
