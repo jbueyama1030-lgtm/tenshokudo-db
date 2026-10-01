@@ -39,6 +39,7 @@ type ContractPeriodLite = {
   monthlyFee: number | null
   discountRate: number | null
   options: Option[] | null
+  revenueOverride?: number | null
 }
 
 type Company = {
@@ -216,12 +217,13 @@ const CERT_OPTIONS = [
   { value: 3, label: "★★★" },
 ]
 
-// 契約期間1本の年間売上
+// 契約期間1本の年間売上（掲載料の手入力があればそれを優先。オプションは加算）
 function periodAnnualRevenue(p: ContractPeriodLite): number {
   const base = (p.monthlyFee ?? 0) * 12
   const discount = Math.round(base * ((p.discountRate ?? 0) / 100))
+  const listing = p.revenueOverride != null ? p.revenueOverride : base - discount
   const opt = (p.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
-  return base - discount + opt
+  return listing + opt
 }
 
 // その契約期間が今アクティブか

@@ -285,7 +285,9 @@ model ContractPeriod {
 
   contractStart   DateTime?
   contractRenewal DateTime?
-  contractEnd     DateTime?   // 解約日（入ると掲載落ち扱い）
+  contractEnd     DateTime?   // 終了日（解約、またはプラン変更で次の期間に切り替えた日）
+  // 終了理由: "cancel"=解約 / "plan_change"=プラン変更（契約途中のアップグレード等）。null=未設定（解約扱い）
+  endReason       String?
 
   // 売上（この契約期間の条件）
   planName     String?
@@ -294,6 +296,9 @@ model ContractPeriod {
   discountNote String?
   options      Json?
   contractNote String?  @db.Text
+  // 掲載料の売上を手入力で上書きする（税込）。入っていれば「月額×12−割引」の代わりに使う。
+  // プラン変更時の差し引き請求など、イレギュラーな金額のときに使う。オプションは別途加算
+  revenueOverride Int?
 
   // ===== 代理店マージン =====
   // 契約成立月に確定。掲載料はラダー（30/35/40/45%）、オプションは一律30%。
@@ -372,7 +377,6 @@ model JobArticle {
 
   @@index([prefecture])
   @@index([isListed])
-  
 }
 
 // 記事内容の履歴。取り込み時に内容が変わった（または新規の）記事だけ1行追加する

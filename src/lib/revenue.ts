@@ -1,8 +1,10 @@
+// 置き場所: src/lib/revenue.ts
 // 企業の年間掲載料売上を算出する（企業詳細の「年間売上合計」と同じ計算）
 // annualBase = monthlyFee × 12
 // discountAmt = annualBase × (discountRate / 100)
+// listing = revenueOverride があればそれ、なければ annualBase − discountAmt
 // optionTotal = options[].amount の合計
-// 年間売上 = annualBase − discountAmt + optionTotal
+// 年間売上 = listing + optionTotal
 
 type OptionLike = { name?: string; amount?: number | string | null }
 
@@ -10,6 +12,8 @@ type RevenueSource = {
   monthlyFee?: number | null
   discountRate?: number | null
   options?: unknown
+  /** 掲載料の手入力（税込）。プラン変更時の差し引き請求などイレギュラーな金額 */
+  revenueOverride?: number | null
 }
 
 // 消費税率（monthlyFee等は税込で入力されている）
@@ -26,13 +30,13 @@ export function toExcludingTax(includingTax: number): number {
  * 合算前の内訳が必要になる。金額はすべて入力どおり＝税込。
  */
 export function annualRevenueBreakdown(company: RevenueSource): {
-  listing: number   // 掲載料（割引適用後）
+  listing: number   // 掲載料（割引適用後。手入力があればその値）
   option: number    // オプション等その他商材
   total: number     // 合計（＝annualRevenue と同値）
 } {
   const annualBase = (company.monthlyFee ?? 0) * 12
   const discountAmt = Math.round(annualBase * ((company.discountRate ?? 0) / 100))
-  const listing = annualBase - discountAmt
+  const listing = company.revenueOverride != null ? company.revenueOverride : annualBase - discountAmt
 
   let option = 0
   if (Array.isArray(company.options)) {

@@ -1,3 +1,4 @@
+// 置き場所: src/components/ContractPeriods.tsx
 "use client"
 import { useEffect, useState } from "react"
 
@@ -9,12 +10,16 @@ type Period = {
   contractStart: string | null
   contractRenewal: string | null
   contractEnd: string | null
+  /** "cancel"=解約 / "plan_change"=プラン変更 / null=未設定（解約扱い） */
+  endReason: string | null
   planName: string | null
   monthlyFee: number | null
   discountRate: number | null
   discountNote: string | null
   options: Option[] | null
   contractNote: string | null
+  /** 掲載料の売上の手入力（税込）。入っていれば月額×12−割引の代わりに使う */
+  revenueOverride: number | null
 }
 
 type Draft = {
@@ -22,12 +27,14 @@ type Draft = {
   contractStart: string
   contractRenewal: string
   contractEnd: string
+  endReason: string
   planName: string
   monthlyFee: string
   discountRate: string
   discountNote: string
   options: Option[]
   contractNote: string
+  revenueOverride: string
 }
 
 const EMPTY_DRAFT: Draft = {
@@ -35,12 +42,14 @@ const EMPTY_DRAFT: Draft = {
   contractStart: "",
   contractRenewal: "",
   contractEnd: "",
+  endReason: "cancel",
   planName: "",
   monthlyFee: "",
   discountRate: "",
   discountNote: "",
   options: [],
   contractNote: "",
+  revenueOverride: "",
 }
 
 function fmt(n: number | null | undefined) {
@@ -48,12 +57,13 @@ function fmt(n: number | null | undefined) {
   return Number(n).toLocaleString("ja-JP")
 }
 
-// 年間売上 = 月額×12 − 割引 + オプション合計
-function annualRevenue(d: { monthlyFee: number | null; discountRate: number | null; options: Option[] | null }): number {
+// 年間売上 = 掲載料（手入力があればそれ、なければ 月額×12 − 割引） + オプション合計
+function annualRevenue(d: { monthlyFee: number | null; discountRate: number | null; options: Option[] | null; revenueOverride: number | null }): number {
   const base = (d.monthlyFee ?? 0) * 12
   const discount = Math.round(base * ((d.discountRate ?? 0) / 100))
+  const listing = d.revenueOverride != null ? d.revenueOverride : base - discount
   const opt = (d.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
-  return base - discount + opt
+  return listing + opt
 }
 
 function daysUntil(dateStr: string | null) {
@@ -68,6 +78,13 @@ function isActive(p: Period): boolean {
   if (new Date(p.contractStart) > now) return false
   if (p.contractEnd && new Date(p.contractEnd) < now) return false
   return true
+}
+
+/** "YYYY-MM-DD" の翌日 */
+function nextDay(dateStr: string): string {
+  const d = new Date(dateStr.slice(0, 10) + "T00:00:00Z")
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
 }
 
 export default function ContractPeriods({
@@ -100,12 +117,14 @@ export default function ContractPeriods({
     contractStart: p.contractStart?.slice(0, 10) ?? "",
     contractRenewal: p.contractRenewal?.slice(0, 10) ?? "",
     contractEnd: p.contractEnd?.slice(0, 10) ?? "",
+    endReason: p.endReason ?? "cancel",
     planName: p.planName ?? "",
     monthlyFee: p.monthlyFee != null ? String(p.monthlyFee) : "",
     discountRate: p.discountRate != null ? String(p.discountRate) : "",
     discountNote: p.discountNote ?? "",
     options: p.options ?? [],
     contractNote: p.contractNote ?? "",
+    revenueOverride: p.revenueOverride != null ? String(p.revenueOverride) : "",
   })
 
   const startAdd = () => { setDraft(EMPTY_DRAFT); setAdding(true); setEditingId("") }
@@ -119,12 +138,14 @@ export default function ContractPeriods({
       contractStart: draft.contractStart || null,
       contractRenewal: draft.contractRenewal || null,
       contractEnd: draft.contractEnd || null,
+      endReason: draft.contractEnd ? draft.endReason : null,
       planName: draft.planName,
       monthlyFee: draft.monthlyFee,
       discountRate: draft.discountRate,
       discountNote: draft.discountNote,
       options: draft.options,
       contractNote: draft.contractNote,
+      revenueOverride: draft.revenueOverride,
     }
     const url = editingId
       ? "/api/companies/" + companyId + "/contract-periods/" + editingId
@@ -152,6 +173,18 @@ export default function ContractPeriods({
       await load()
       onStatusMaybeChanged?.()
     }
+  }
+
+  // プラン変更のつながり: 「プラン変更」で終わった期間の翌日に始まる期間を探す
+  const changedFrom = (p: Period): Period | undefined => {
+    if (!p.contractStart) return undefined
+    const start = p.contractStart.slice(0, 10)
+    return periods.find(q => q.id !== p.id && q.endReason === "plan_change" && q.contractEnd && nextDay(q.contractEnd) === start)
+  }
+  const changedTo = (p: Period): Period | undefined => {
+    if (p.endReason !== "plan_change" || !p.contractEnd) return undefined
+    const next = nextDay(p.contractEnd)
+    return periods.find(q => q.id !== p.id && q.contractStart?.slice(0, 10) === next)
   }
 
   const renderForm = () => (
@@ -182,16 +215,34 @@ export default function ContractPeriods({
           <input type="date" value={draft.contractRenewal} onChange={e => setDraft({ ...draft, contractRenewal: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">解約日（入力すると掲載落ちに）</label>
+          <label className="block text-xs text-gray-400 mb-1">終了日（解約・プラン変更）</label>
           <input type="date" value={draft.contractEnd} onChange={e => setDraft({ ...draft, contractEnd: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" />
         </div>
+        {draft.contractEnd && (
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">終了理由</label>
+            <select value={draft.endReason} onChange={e => setDraft({ ...draft, endReason: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900">
+              <option value="cancel">解約</option>
+              <option value="plan_change">プラン変更（次の契約期間に切り替え）</option>
+            </select>
+          </div>
+        )}
         <div>
           <label className="block text-xs text-gray-400 mb-1">割引率(%)</label>
           <input type="number" value={draft.discountRate} onChange={e => setDraft({ ...draft, discountRate: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" placeholder="%" />
         </div>
-        <div className="col-span-2">
+        <div className={draft.contractEnd ? "" : "col-span-2"}>
           <label className="block text-xs text-gray-400 mb-1">割引備考</label>
           <input value={draft.discountNote} onChange={e => setDraft({ ...draft, discountNote: e.target.value })} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" placeholder="例: 3年契約5%OFF" />
+        </div>
+      </div>
+
+      {/* 売上の手入力（イレギュラー時のみ） */}
+      <div className="bg-white/60 rounded-lg p-3">
+        <label className="block text-xs text-gray-500 mb-1">掲載料の売上を手入力（税込・任意）</label>
+        <div className="flex items-center gap-2">
+          <input type="number" value={draft.revenueOverride} onChange={e => setDraft({ ...draft, revenueOverride: e.target.value })} className="w-48 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-gray-900" placeholder="空欄なら月額×12で計算" />
+          <span className="text-xs text-gray-400">プラン変更時の差し引き請求など、月額×12と実際の請求額が違うときだけ入力。オプションは別途加算されます。</span>
         </div>
       </div>
 
@@ -243,17 +294,27 @@ export default function ContractPeriods({
                 const active = isActive(p)
                 const renewalDays = daysUntil(p.contractRenewal)
                 const revenue = annualRevenue(p)
+                const from = changedFrom(p)
+                const to = changedTo(p)
                 return (
                   <div key={p.id} className={"rounded-lg border p-4 " + (active ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50")}>
                     <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {active
                           ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-800">契約中</span>
                           : p.contractEnd
-                            ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-200 text-gray-600">終了</span>
+                            ? p.endReason === "plan_change"
+                              ? <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">終了（プラン変更）</span>
+                              : <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-200 text-gray-600">終了（解約）</span>
                             : <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">開始前/未設定</span>}
                         {p.externalId && <span className="text-xs text-gray-400">ID: {p.externalId}</span>}
                         {p.planName && <span className="text-xs text-gray-500">{p.planName}</span>}
+                        {from && (
+                          <span className="text-xs text-indigo-700">↑ {from.planName ?? "前のプラン"}からプラン変更</span>
+                        )}
+                        {to && (
+                          <span className="text-xs text-indigo-700">→ {to.planName ?? "次のプラン"}へプラン変更</span>
+                        )}
                       </div>
                       {canEdit && !editingId && !adding && (
                         <div className="flex gap-2">
@@ -285,7 +346,7 @@ export default function ContractPeriods({
                         <div className="text-gray-900">{p.monthlyFee != null ? "¥" + fmt(p.monthlyFee) : "-"}{p.discountRate ? "（" + p.discountRate + "%off）" : ""}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-400">年間売上</div>
+                        <div className="text-xs text-gray-400">年間売上{p.revenueOverride != null && <span className="ml-1 text-[10px] text-indigo-600">（手入力）</span>}</div>
                         <div className="font-bold text-blue-700">¥{fmt(revenue)}</div>
                       </div>
                     </div>
