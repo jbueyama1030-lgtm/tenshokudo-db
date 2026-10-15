@@ -1,9 +1,8 @@
+// 置き場所: src/lib/chatwork.ts
 // ChatWork通知の共通関数
 // 環境変数 CHATWORK_API_TOKEN / CHATWORK_ROOM_ID が未設定なら何もしない
 
-import { PrismaClient } from "@prisma/client"
-
-const prisma = new PrismaClient()
+import { prisma } from "@/lib/prisma"
 
 // メンション対象の型（chatworkAccountId が無い人は無視される）
 export type MentionUser = {
@@ -26,10 +25,14 @@ export function buildMentions(users: MentionUser[]): string {
   return lines.length > 0 ? lines.join("\n") + "\n" : ""
 }
 
-// role が production のユーザー全員を取得（起票時のメンション用）
+// 制作ロールを持つ有効なユーザー全員を取得（起票時のメンション用）
+// roles 配列（新）と role（旧・移行期間のフォールバック）の両方を見る
 export async function getProductionMembers(): Promise<MentionUser[]> {
   const members = await prisma.user.findMany({
-    where: { role: "production" },
+    where: {
+      isActive: true,
+      OR: [{ roles: { has: "production" } }, { role: "production" }],
+    },
     select: { name: true, chatworkAccountId: true },
   })
   return members

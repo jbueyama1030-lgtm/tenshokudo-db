@@ -1,10 +1,9 @@
+// 置き場所: src/app/api/production-tasks/[id]/route.ts
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
 import { canViewProduction, isAdmin, isProduction, isSales } from "@/lib/permissions"
-
-const prisma = new PrismaClient()
 
 const STATUS_LABELS: Record<string, string> = {
   not_started: "未着手",
@@ -112,14 +111,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
   }
 
-  if (body.assigneeId !== undefined && (body.assigneeId || null) !== existing.assigneeId) {
-    let msg = ""
-    if (body.assigneeId) {
-      const newAssignee = await prisma.user.findUnique({ where: { id: body.assigneeId }, select: { name: true } })
-      msg = "制作担当を " + (newAssignee?.name ?? "不明") + " に設定しました"
-    } else {
-      msg = "制作担当を未割当に戻しました"
-    }
+  const newAssigneeId: string | null = body.assigneeId !== undefined ? (body.assigneeId || null) : existing.assigneeId
+  const assigneeChanged = body.assigneeId !== undefined && newAssigneeId !== existing.assigneeId
+  if (assigneeChanged) {
+    const msg = task.assignee
+      ? "制作担当を " + task.assignee.name + " に設定しました"
+      : "制作担当を未割当に戻しました"
     await prisma.taskComment.create({
       data: {
         taskId: id,
@@ -130,15 +127,36 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     })
   }
 
-  // ChatWork通知（要アクションのときだけ）
-  if (statusChanged) {
-    const link = APP_URL + "/production/" + task.id
-    const commonInfo =
-      "案件: " + task.name + "\n" +
-      "企業: " + (task.company?.name ?? "-") + "\n" +
-      "制作担当: " + (task.assignee?.name ?? "未割当") + "\n" +
-      "依頼営業: " + (task.requester?.name ?? "-") + "\n"
+  const link = APP_URL + "/production/" + task.id
+  const commonInfo =
+    "案件: " + task.name + "\n" +
+    "企業: " + (task.company?.name ?? "-") + "\n" +
+    "制作担当: " + (task.assignee?.name ?? "未割当") + "\n" +
+    "依頼営業: " + (task.requester?.name ?? "-") + "\n"
 
+  // ChatWork通知: 制作担当が決まった（未割当→担当あり、または担当の変更）
+  // ・依頼営業 → 「担当が決まりました」
+  // ・新しい担当者 → 他の人に割り当てられた場合のみ（自分で自分を設定したときは送らない）
+  // ・操作した本人にはメンションしない
+  if (assigneeChanged && task.assignee) {
+    const actorId = session.user.id
+    const targets = [
+      task.requester && task.requester.id !== actorId ? task.requester : null,
+      task.assignee.id !== actorId ? task.assignee : null,
+    ]
+    const mentions = buildMentions(targets)
+    await notifyChatwork(
+      mentions +
+      "[info][title]👤 制作担当が決まりました[/title]\n" +
+      commonInfo +
+      "設定者: " + (task.lastUpdatedBy?.name ?? "-") + "\n" +
+      "\n" + link +
+      "[/info]"
+    )
+  }
+
+  // ChatWork通知（ステータス変更のうち要アクションのときだけ）
+  if (statusChanged) {
     if (body.status === "sales_review") {
       // 営業確認中 → 依頼営業にメンション
       const mentions = buildMentions([task.requester])
