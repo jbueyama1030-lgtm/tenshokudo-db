@@ -1,0 +1,981 @@
+﻿===== C:\Users\ueyam\Desktop\tenshokudo-db\src\app\production\page.tsx
+"use client"
+import Sidebar from "@/components/Sidebar"
+import { useEffect, useState } from "react"
+
+type Task = {
+  id: string
+  name: string
+  type: string
+  priority: string
+  status: string
+  memo: string | null
+  dueDate: string | null
+  updatedAt: string
+  company: { id: string; name: string; companyId: string | null } | null
+  assignee: { id: string; name: string } | null
+  requester: { id: string; name: string } | null
+  lastUpdatedBy: { id: string; name: string } | null
+  createdAt: string
+}
+
+const TYPE_LABELS: Record<string, string> = { new: "譁ｰ隕・, revise: "菫ｮ豁｣", renewal: "繝ｪ繝九Η繝ｼ繧｢繝ｫ" }
+const PRIORITY_LABELS: Record<string, { label: string; cls: string }> = {
+  high: { label: "鬮・, cls: "bg-red-100 text-red-700" },
+  medium: { label: "荳ｭ", cls: "bg-yellow-100 text-yellow-700" },
+  low: { label: "菴・, cls: "bg-gray-100 text-gray-600" },
+}
+const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  not_started: { label: "譛ｪ逹謇・, cls: "bg-gray-100 text-gray-600" },
+  in_progress: { label: "逹謇・, cls: "bg-blue-100 text-blue-700" },
+  sales_review: { label: "蝟ｶ讌ｭ遒ｺ隱堺ｸｭ", cls: "bg-purple-100 text-purple-700" },
+  client_review: { label: "莨∵･ｭ遒ｺ隱堺ｸｭ", cls: "bg-indigo-100 text-indigo-700" },
+  published: { label: "蜈ｬ髢・, cls: "bg-green-100 text-green-700" },
+  completed: { label: "螳御ｺ・, cls: "bg-emerald-100 text-emerald-800" },
+  paused: { label: "荳譎ょ●豁｢荳ｭ", cls: "bg-orange-100 text-orange-700" },
+  stopped: { label: "蛛懈ｭ｢蜃ｦ逅・ｸ医∩", cls: "bg-gray-200 text-gray-500" },
+}
+
+// 邨ゆｺ・桶縺・・繧ｹ繝・・繧ｿ繧ｹ・医ム繝・す繝･繝懊・繝峨・騾ｲ陦御ｸｭ荳隕ｧ縺九ｉ髯､螟厄ｼ・
+const CLOSED_STATUSES = ["completed", "stopped"]
+
+function TaskTable({ tasks }: { tasks: Task[] }) {
+  if (tasks.length === 0) {
+    return <p className="text-sm text-gray-400 py-6 text-center">譯井ｻｶ縺後≠繧翫∪縺帙ｓ</p>
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">譯井ｻｶ蜷・/th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">莨∵･ｭ</th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">遞ｮ蛻･</th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">蜆ｪ蜈亥ｺｦ</th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">繧ｹ繝・・繧ｿ繧ｹ</th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">萓晞ｼ蝟ｶ讌ｭ</th>
+            <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">邏肴悄</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {tasks.map(t => (
+            <tr key={t.id} className="hover:bg-gray-50">
+              <td className="px-3 py-2">
+                <a href={"/production/" + t.id} className="text-gray-900 font-medium hover:text-blue-600 hover:underline">{t.name}</a>
+                {t.memo && <div className="text-xs text-gray-400 mt-0.5 whitespace-pre-wrap">{t.memo}</div>}
+              </td>
+              <td className="px-3 py-2 text-gray-600">{t.company?.name ?? "-"}</td>
+              <td className="px-3 py-2 text-gray-600">{TYPE_LABELS[t.type] ?? t.type}</td>
+              <td className="px-3 py-2">
+                <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (PRIORITY_LABELS[t.priority]?.cls ?? "")}>{PRIORITY_LABELS[t.priority]?.label ?? t.priority}</span>
+              </td>
+              <td className="px-3 py-2">
+                <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (STATUS_LABELS[t.status]?.cls ?? "")}>{STATUS_LABELS[t.status]?.label ?? t.status}</span>
+              </td>
+              <td className="px-3 py-2 text-gray-600">{t.requester?.name ?? "-"}</td>
+              <td className="px-3 py-2 text-gray-600">{t.dueDate ? t.dueDate.slice(0, 10) : "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+export default function ProductionDashboardPage() {
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [userName, setUserName] = useState("")
+  const [userId, setUserId] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [showClosed, setShowClosed] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/auth/session").then(r => r.json()).then(s => {
+      setUserName(s?.user?.name ?? "")
+      setUserId(s?.user?.id ?? "")
+    })
+    fetch("/api/production-tasks").then(r => r.json()).then(data => {
+      setTasks(Array.isArray(data) ? data : [])
+      setLoading(false)
+    })
+  }, [])
+
+  // 騾ｲ陦御ｸｭ縺ｮ譯井ｻｶ・亥ｮ御ｺ・・蛛懈ｭ｢蜃ｦ逅・ｸ医∩繧帝勁縺擾ｼ・
+  const active = tasks.filter(t => !CLOSED_STATUSES.includes(t.status))
+  const unassigned = active.filter(t => !t.assignee)
+  const mine = active.filter(t => t.assignee && t.assignee.id === userId)
+  // 邨ゆｺ・＠縺滓｡井ｻｶ
+  const closed = tasks.filter(t => CLOSED_STATUSES.includes(t.status))
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar userName={userName} />
+      <main className="flex-1 overflow-auto">
+        <div className="px-8 py-6 max-w-6xl">
+          <h1 className="text-xl font-bold text-gray-800 mb-2">耳 蛻ｶ菴懊ム繝・す繝･繝懊・繝・/h1>
+          <p className="text-sm text-gray-500 mb-6">譛ｪ蜑ｲ蠖薙・譯井ｻｶ繧堤｢ｺ隱阪＠縺ｦ諡・ｽ薙ｒ蜿門ｾ励∬・蛻・・譯井ｻｶ縺ｮ騾ｲ謐励ｒ邂｡逅・＠縺ｾ縺・/p>
+
+          {loading ? (
+            <div className="text-gray-400 text-sm py-12 text-center">隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ...</div>
+          ) : (
+            <div className="space-y-6">
+              {/* 譛ｪ蜑ｲ蠖・*/}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-sm font-semibold text-gray-700">踏 譛ｪ蜑ｲ蠖薙・譯井ｻｶ</h2>
+                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">{unassigned.length}</span>
+                </div>
+                <TaskTable tasks={unassigned} />
+              </div>
+
+              {/* 閾ｪ蛻・・諡・ｽ・*/}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-sm font-semibold text-gray-700">側 閾ｪ蛻・′諡・ｽ薙・譯井ｻｶ</h2>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{mine.length}</span>
+                </div>
+                <TaskTable tasks={mine} />
+              </div>
+
+              {/* 邨ゆｺ・＠縺滓｡井ｻｶ・域釜繧翫◆縺溘∩・・*/}
+              <div className="bg-white rounded-xl border border-gray-200 p-5">
+                <button onClick={() => setShowClosed(!showClosed)} className="flex items-center gap-2 w-full text-left">
+                  <h2 className="text-sm font-semibold text-gray-500">笨・邨ゆｺ・＠縺滓｡井ｻｶ</h2>
+                  <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">{closed.length}</span>
+                  <span className="ml-auto text-xs text-gray-400">{showClosed ? "笆ｲ 髢峨§繧・ : "笆ｼ 陦ｨ遉ｺ縺吶ｋ"}</span>
+                </button>
+                {showClosed && (
+                  <div className="mt-4">
+                    <TaskTable tasks={closed} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  )
+}
+===== C:\Users\ueyam\Desktop\tenshokudo-db\src\app\production\[id]\page.tsx
+"use client"
+import Sidebar from "@/components/Sidebar"
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
+
+type MonthlyRecord = {
+  id: string
+  year: number
+  month: number
+  applyCount: number
+  hireCount: number
+  inflowBreakdown: Record<string, number> | null
+}
+
+type Comment = {
+  id: string
+  body: string
+  isSystem: boolean
+  createdAt: string
+  user: { id: string; name: string } | null
+}
+
+type Task = {
+  id: string
+  name: string
+  type: string
+  priority: string
+  status: string
+  memo: string | null
+  dueDate: string | null
+  assigneeId: string | null
+  requesterId: string | null
+  updatedAt: string
+  assignee: { id: string; name: string } | null
+  requester: { id: string; name: string } | null
+  lastUpdatedBy: { id: string; name: string } | null
+  company: {
+    id: string
+    name: string
+    companyId: string | null
+    address: string | null
+    websiteUrl: string | null
+    adoptionChallenge: string | null
+    shifts: string[]
+    apps: string[]
+    dispatchRatio: string | null
+    driverCount: number | null
+    vehicleCount: number | null
+    annualHiringTarget: number | null
+    workplaceCertLevel: number
+    user: { id: string; name: string } | null
+    monthlyRecords: MonthlyRecord[]
+  } | null
+}
+
+const TYPE_LABELS: Record<string, string> = { new: "譁ｰ隕・, revise: "菫ｮ豁｣", renewal: "繝ｪ繝九Η繝ｼ繧｢繝ｫ" }
+const PRIORITY_LABELS: Record<string, { label: string; cls: string }> = {
+  high: { label: "鬮・, cls: "bg-red-100 text-red-700" },
+  medium: { label: "荳ｭ", cls: "bg-yellow-100 text-yellow-700" },
+  low: { label: "菴・, cls: "bg-gray-100 text-gray-600" },
+}
+const STATUS_OPTIONS = [
+  { value: "not_started", label: "譛ｪ逹謇・ },
+  { value: "in_progress", label: "逹謇・ },
+  { value: "sales_review", label: "蝟ｶ讌ｭ遒ｺ隱堺ｸｭ" },
+  { value: "client_review", label: "莨∵･ｭ遒ｺ隱堺ｸｭ" },
+  { value: "published", label: "蜈ｬ髢・ },
+  { value: "completed", label: "螳御ｺ・ },
+  { value: "paused", label: "荳譎ょ●豁｢荳ｭ" },
+  { value: "stopped", label: "蛛懈ｭ｢蜃ｦ逅・ｸ医∩" },
+]
+const STATUS_CLS: Record<string, string> = {
+  not_started: "bg-gray-100 text-gray-600",
+  in_progress: "bg-blue-100 text-blue-700",
+  sales_review: "bg-purple-100 text-purple-700",
+  client_review: "bg-indigo-100 text-indigo-700",
+  published: "bg-green-100 text-green-700",
+  completed: "bg-emerald-100 text-emerald-800",
+  paused: "bg-orange-100 text-orange-700",
+  stopped: "bg-gray-200 text-gray-500",
+}
+
+function fmt(n: number | null | undefined) {
+  if (n == null) return "-"
+  return Number(n).toLocaleString("ja-JP")
+}
+
+function fmtDateTime(s: string) {
+  const d = new Date(s)
+  return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })
+}
+
+export default function ProductionTaskDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const router = useRouter()
+  const [task, setTask] = useState<Task | null>(null)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [userName, setUserName] = useState("")
+  const [userId, setUserId] = useState("")
+  const [role, setRole] = useState("")
+  const [memo, setMemo] = useState("")
+  const [newComment, setNewComment] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [err, setErr] = useState("")
+
+  const load = async () => {
+    const res = await fetch("/api/production-tasks/" + id)
+    if (res.ok) {
+      const data = await res.json()
+      setTask(data)
+      setMemo(data.memo ?? "")
+    }
+  }
+
+  const loadComments = async () => {
+    const res = await fetch("/api/production-tasks/" + id + "/comments")
+    if (res.ok) setComments(await res.json())
+  }
+
+  useEffect(() => {
+    fetch("/api/auth/session").then(r => r.json()).then(s => {
+      setUserName(s?.user?.name ?? "")
+      setUserId(s?.user?.id ?? "")
+      setRole(s?.user?.role ?? "")
+    })
+    load()
+    loadComments()
+  }, [id])
+
+  const patch = async (body: Record<string, unknown>) => {
+    setSaving(true)
+    setErr("")
+    const res = await fetch("/api/production-tasks/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      await load()
+      await loadComments()
+    } else {
+      const data = await res.json()
+      setErr(data.error ?? "譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆")
+    }
+    setSaving(false)
+  }
+
+  const handlePostComment = async () => {
+    if (!newComment.trim()) return
+    setPosting(true)
+    const res = await fetch("/api/production-tasks/" + id + "/comments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: newComment }),
+    })
+    if (res.ok) {
+      setNewComment("")
+      await loadComments()
+    }
+    setPosting(false)
+  }
+
+  const handleDelete = async () => {
+    if (!confirm("縺薙・譯井ｻｶ繧貞炎髯､縺励∪縺吶°・・)) return
+    const res = await fetch("/api/production-tasks/" + id, { method: "DELETE" })
+    if (res.ok) {
+      router.push("/production")
+    } else {
+      const data = await res.json()
+      setErr(data.error ?? "蜑企勁縺ｫ螟ｱ謨励＠縺ｾ縺励◆")
+    }
+  }
+
+  if (!task) return <div className="flex h-screen items-center justify-center text-gray-400">隱ｭ縺ｿ霎ｼ縺ｿ荳ｭ...</div>
+
+  const isAdmin = role !== "sales" && role !== "production"
+  const isProduction = role === "production"
+  const isRequester = task.requesterId === userId
+  const canComplete = isAdmin || isRequester
+  const canDelete = isAdmin || isRequester
+  const canAssign = isAdmin || isProduction
+
+  const c = task.company
+  const years = c ? [...new Set(c.monthlyRecords.map(r => r.year))].sort() : []
+  const latestYear = years.length > 0 ? years[years.length - 1] : null
+  const latestRecords = c ? c.monthlyRecords.filter(r => r.year === latestYear) : []
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      <Sidebar userName={userName} />
+      <main className="flex-1 overflow-auto">
+        <div className="px-8 py-6 max-w-4xl">
+          <div className="flex items-center gap-3 mb-4">
+            <a href="/production" className="text-sm text-gray-400 hover:text-gray-600">竊・蛻ｶ菴懊ム繝・す繝･繝懊・繝・/a>
+            <span className="text-gray-300">/</span>
+            <h1 className="text-xl font-bold text-gray-800">{task.name}</h1>
+            <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_CLS[task.status] ?? "")}>
+              {STATUS_OPTIONS.find(o => o.value === task.status)?.label ?? task.status}
+            </span>
+          </div>
+
+          {err && <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">{err}</div>}
+
+          {/* 譯井ｻｶ諠・ｱ・区桃菴・*/}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">譯井ｻｶ諠・ｱ</h2>
+              {canDelete && <button onClick={handleDelete} className="text-xs text-red-500 hover:text-red-700">卵・・蜑企勁</button>}
+            </div>
+
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div>
+                <div className="text-xs text-gray-400 mb-1">莨∵･ｭ</div>
+                {c ? <a href={"/companies/" + c.id} className="text-sm text-blue-600 hover:underline">{c.name}</a> : <p className="text-sm text-gray-400">-</p>}
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">遞ｮ蛻･</div>
+                <p className="text-sm text-gray-900">{TYPE_LABELS[task.type] ?? task.type}</p>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">蜆ｪ蜈亥ｺｦ</div>
+                <span className={"text-xs px-2 py-0.5 rounded-full font-medium " + (PRIORITY_LABELS[task.priority]?.cls ?? "")}>{PRIORITY_LABELS[task.priority]?.label ?? task.priority}</span>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">萓晞ｼ蝟ｶ讌ｭ</div>
+                <p className="text-sm text-gray-900">{task.requester?.name ?? "-"}</p>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">邏肴悄</div>
+                <p className="text-sm text-gray-900">{task.dueDate ? task.dueDate.slice(0, 10) : "-"}</p>
+              </div>
+              <div>
+                <div className="text-xs text-gray-400 mb-1">蛻ｶ菴懈球蠖・/div>
+                <p className="text-sm text-gray-900">{task.assignee ? task.assignee.name : <span className="text-gray-400">譛ｪ蜑ｲ蠖・/span>}</p>
+              </div>
+            </div>
+
+            {/* 譛邨よ峩譁ｰ */}
+            <div className="border-t border-gray-100 pt-3 mb-4">
+              <div className="text-xs text-gray-400">
+                譛邨よ峩譁ｰ: {task.lastUpdatedBy ? task.lastUpdatedBy.name : "-"}
+                <span className="ml-2 text-gray-300">{fmtDateTime(task.updatedAt)}</span>
+              </div>
+            </div>
+
+            {/* 繧ｹ繝・・繧ｿ繧ｹ螟画峩 */}
+            <div className="border-t border-gray-100 pt-4 mb-4">
+              <div className="text-xs text-gray-400 mb-2">繧ｹ繝・・繧ｿ繧ｹ</div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={task.status}
+                  onChange={e => patch({ status: e.target.value })}
+                  disabled={saving}
+                  className={"border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium " + (STATUS_CLS[task.status] ?? "text-gray-900")}
+                >
+                  {STATUS_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value} disabled={o.value === "completed" && !canComplete}>
+                      {o.label}{o.value === "completed" && !canComplete ? "・井ｾ晞ｼ蝟ｶ讌ｭ縺ｮ縺ｿ・・ : ""}
+                    </option>
+                  ))}
+                </select>
+                {saving && <span className="text-xs text-gray-400">菫晏ｭ倅ｸｭ...</span>}
+              </div>
+            </div>
+
+            {/* 諡・ｽ灘叙蠕暦ｼ剰ｧ｣髯､・亥宛菴懊Ο繝ｼ繝ｫ繝ｻadmin縺ｮ縺ｿ謫堺ｽ懷庄・・*/}
+            <div className="border-t border-gray-100 pt-4 mb-4">
+              <div className="text-xs text-gray-400 mb-2">諡・ｽ・/div>
+              {!canAssign ? (
+                <p className="text-sm text-gray-500">{task.assignee ? task.assignee.name + " 縺梧球蠖謎ｸｭ" : "譛ｪ蜑ｲ蠖・}</p>
+              ) : task.assigneeId === userId ? (
+                <button onClick={() => patch({ assigneeId: null })} disabled={saving} className="text-sm border border-gray-300 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50">諡・ｽ薙ｒ螟悶☆</button>
+              ) : task.assigneeId ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500">{task.assignee?.name} 縺梧球蠖謎ｸｭ</span>
+                  <button onClick={() => patch({ assigneeId: userId })} disabled={saving} className="text-sm border border-blue-300 rounded-lg px-4 py-2 text-blue-600 hover:bg-blue-50 disabled:opacity-50">閾ｪ蛻・↓蛻・ｊ譖ｿ縺医ｋ</button>
+                </div>
+              ) : (
+                <button onClick={() => patch({ assigneeId: userId })} disabled={saving} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">・・縺薙・譯井ｻｶ繧呈球蠖薙☆繧・/button>
+              )}
+            </div>
+
+            {/* 繝｡繝｢邱ｨ髮・*/}
+            <div className="border-t border-gray-100 pt-4">
+              <div className="text-xs text-gray-400 mb-2">繝｡繝｢繝ｻ萓晞ｼ蜀・ｮｹ</div>
+              <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+              <button onClick={() => patch({ memo })} disabled={saving} className="mt-2 text-sm border border-gray-300 rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50 disabled:opacity-50">繝｡繝｢繧剃ｿ晏ｭ・/button>
+            </div>
+          </div>
+
+          {/* 繧ｳ繝｡繝ｳ繝医・螻･豁ｴ・医ち繧､繝繝ｩ繧､繝ｳ・・*/}
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-4">町 繧ｳ繝｡繝ｳ繝医・螻･豁ｴ・・comments.filter(x => !x.isSystem).length}莉ｶ・・/h2>
+
+            {comments.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">縺ｾ縺螻･豁ｴ縺後≠繧翫∪縺帙ｓ</p>
+            ) : (
+              <div className="space-y-3 mb-5">
+                {comments.map(cm => (
+                  cm.isSystem ? (
+                    <div key={cm.id} className="flex items-center gap-2 text-xs text-gray-400 py-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300"></span>
+                      <span>{cm.user?.name ?? "繧ｷ繧ｹ繝・Β"}縺鶏cm.body}</span>
+                      <span className="text-gray-300">{fmtDateTime(cm.createdAt)}</span>
+                    </div>
+                  ) : (
+                    <div key={cm.id} className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-xs font-semibold text-gray-700">{cm.user?.name ?? "荳肴・"}</span>
+                        <span className="text-xs text-gray-400">{fmtDateTime(cm.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{cm.body}</p>
+                    </div>
+                  )
+                ))}
+              </div>
+            )}
+
+            {/* 謚慕ｨｿ繝輔か繝ｼ繝 */}
+            <div className="border-t border-gray-100 pt-4">
+              <textarea
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+                rows={2}
+                placeholder="菫ｮ豁｣萓晞ｼ繧・｢ｺ隱堺ｺ矩・ｒ險伜・..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900"
+              />
+              <button
+                onClick={handlePostComment}
+                disabled={posting || !newComment.trim()}
+                className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {posting ? "謚慕ｨｿ荳ｭ..." : "繧ｳ繝｡繝ｳ繝医☆繧・}
+              </button>
+            </div>
+          </div>
+
+          {/* 邏蝉ｻ倥￥莨∵･ｭ縺ｮ蝟ｶ讌ｭ繝・・繧ｿ・磯夢隕ｧ蟆ら畑・・*/}
+          {c && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">召 莨∵･ｭ縺ｮ蝟ｶ讌ｭ繝・・繧ｿ・亥盾閠・・髢ｲ隕ｧ蟆ら畑・・/h2>
+
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">莨∵･ｭ蜷・/div>
+                  <p className="text-sm text-gray-900">{c.name}</p>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">謇蝨ｨ蝨ｰ</div>
+                  <p className="text-sm text-gray-900">{c.address ?? "-"}</p>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">蝟ｶ讌ｭ諡・ｽ・/div>
+                  <p className="text-sm text-gray-900">{c.user?.name ?? "-"}</p>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">HP</div>
+                  {c.websiteUrl ? <a href={c.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">{c.websiteUrl}</a> : <p className="text-sm text-gray-400">-</p>}
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">菫晄怏霆贋ｸ｡謨ｰ</div>
+                  <p className="text-sm text-gray-900">{c.vehicleCount != null ? c.vehicleCount + "蜿ｰ" : "-"}</p>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">繝峨Λ繧､繝舌・謨ｰ</div>
+                  <p className="text-sm text-gray-900">{c.driverCount != null ? c.driverCount + "蜷・ : "-"}</p>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <div className="text-xs text-gray-400 mb-1">謗｡逕ｨ隱ｲ鬘・/div>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.adoptionChallenge || "-"}</p>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 mb-4 grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">蜍滄寔蜍､蜍吝ｽ｢諷・/div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(c.shifts ?? []).length > 0 ? (c.shifts ?? []).map(s => <span key={s} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{s}</span>) : <span className="text-sm text-gray-400">-</span>}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">蟆主・繧｢繝励Μ</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(c.apps ?? []).length > 0 ? (c.apps ?? []).map(a => <span key={a} className="text-xs px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">{a}</span>) : <span className="text-sm text-gray-400">-</span>}
+                  </div>
+                </div>
+              </div>
+
+              {latestRecords.length > 0 && (
+                <div className="border-t border-gray-100 pt-4">
+                  <div className="text-xs text-gray-400 mb-2">蠢懷供螳溽ｸｾ・・latestYear}蟷ｴ・・/div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">譛・/th>
+                          <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">蠢懷供謨ｰ</th>
+                          <th className="text-right px-3 py-2 text-xs font-medium text-gray-500">蜈･遉ｾ謨ｰ</th>
+                          <th className="text-left px-3 py-2 text-xs font-medium text-gray-500">豬∝・蜈・・險ｳ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {latestRecords.map(r => (
+                          <tr key={r.id}>
+                            <td className="px-3 py-2 text-gray-900 font-medium">{r.month}譛・/td>
+                            <td className="px-3 py-2 text-right font-bold text-blue-600">{r.applyCount}</td>
+                            <td className="px-3 py-2 text-right font-bold text-green-600">{r.hireCount}</td>
+                            <td className="px-3 py-2">
+                              {r.inflowBreakdown && (
+                                <div className="flex flex-wrap gap-1">
+                                  {Object.entries(r.inflowBreakdown).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                                    <span key={k} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{k}: {v}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  )
+}
+===== C:\Users\ueyam\Desktop\tenshokudo-db\src\app\api\production-tasks\route.ts
+import { NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { PrismaClient } from "@prisma/client"
+import { notifyChatwork, APP_URL, buildMentions, getProductionMembers } from "@/lib/chatwork"
+import { canViewProduction, canCreateTask } from "@/lib/permissions"
+
+const prisma = new PrismaClient()
+
+const TYPE_LABELS: Record<string, string> = { new: "譁ｰ隕・, revise: "菫ｮ豁｣", renewal: "繝ｪ繝九Η繝ｼ繧｢繝ｫ" }
+const PRIORITY_LABELS: Record<string, string> = { high: "鬮・, medium: "荳ｭ", low: "菴・ }
+
+// GET: 譯井ｻｶ荳隕ｧ・・companyId=xxx 縺ｧ迚ｹ螳壻ｼ∵･ｭ縺ｫ邨槭ｊ霎ｼ縺ｿ蜿ｯ閭ｽ・・
+export async function GET(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "蛻ｶ菴懈｡井ｻｶ縺ｮ髢ｲ隕ｧ讓ｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  const { searchParams } = new URL(req.url)
+  const companyId = searchParams.get("companyId")
+
+  const tasks = await prisma.productionTask.findMany({
+    where: companyId ? { companyId } : {},
+    include: {
+      company: { select: { id: true, name: true, companyId: true } },
+      assignee: { select: { id: true, name: true } },
+      requester: { select: { id: true, name: true } },
+      lastUpdatedBy: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  })
+
+  return NextResponse.json(tasks)
+}
+
+// POST: 譁ｰ隕乗｡井ｻｶ繧定ｵｷ逾ｨ
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canCreateTask(session)) {
+    return NextResponse.json({ error: "蛻ｶ菴應ｾ晞ｼ繧定ｵｷ逾ｨ縺吶ｋ讓ｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  const body = await req.json()
+
+  if (!body.companyId || !body.name) {
+    return NextResponse.json({ error: "莨∵･ｭ縺ｨ譯井ｻｶ蜷阪・蠢・医〒縺・ }, { status: 400 })
+  }
+
+  const task = await prisma.productionTask.create({
+    data: {
+      companyId: body.companyId,
+      name: body.name,
+      type: body.type || "new",
+      priority: body.priority || "medium",
+      status: body.status || "not_started",
+      memo: body.memo || null,
+      dueDate: body.dueDate ? new Date(body.dueDate) : null,
+      requesterId: session.user.id,
+      assigneeId: null,
+      lastUpdatedById: session.user.id,
+    },
+    include: {
+      company: { select: { id: true, name: true, companyId: true } },
+      assignee: { select: { id: true, name: true } },
+      requester: { select: { id: true, name: true } },
+      lastUpdatedBy: { select: { id: true, name: true } },
+    },
+  })
+
+  // ChatWork騾夂衍・亥宛菴懊Γ繝ｳ繝舌・蜈ｨ蜩｡繧偵Γ繝ｳ繧ｷ繝ｧ繝ｳ・・
+  const productionMembers = await getProductionMembers()
+  const mentions = buildMentions(productionMembers)
+
+  const msg =
+    mentions +
+    "[info][title]踏 譁ｰ縺励＞蛻ｶ菴應ｾ晞ｼ縺梧擂縺ｾ縺励◆[/title]\n" +
+    "譯井ｻｶ: " + task.name + "\n" +
+    "莨∵･ｭ: " + (task.company?.name ?? "-") + "\n" +
+    "遞ｮ蛻･: " + (TYPE_LABELS[task.type] ?? task.type) + " / 蜆ｪ蜈亥ｺｦ: " + (PRIORITY_LABELS[task.priority] ?? task.priority) + "\n" +
+    "萓晞ｼ蝟ｶ讌ｭ: " + (task.requester?.name ?? "-") + "\n" +
+    "邏肴悄: " + (task.dueDate ? new Date(task.dueDate).toLocaleDateString("ja-JP") : "譛ｪ險ｭ螳・) + "\n" +
+    (task.memo ? "\n萓晞ｼ蜀・ｮｹ:\n" + task.memo + "\n" : "") +
+    "\n" + APP_URL + "/production/" + task.id +
+    "[/info]"
+  await notifyChatwork(msg)
+
+  return NextResponse.json(task)
+}
+===== C:\Users\ueyam\Desktop\tenshokudo-db\src\app\api\production-tasks\[id]\route.ts
+// 鄂ｮ縺榊ｴ謇: src/app/api/production-tasks/[id]/route.ts
+import { NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
+import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
+import { canViewProduction, isAdmin, isProduction, isSales } from "@/lib/permissions"
+
+const STATUS_LABELS: Record<string, string> = {
+  not_started: "譛ｪ逹謇・,
+  in_progress: "逹謇・,
+  sales_review: "蝟ｶ讌ｭ遒ｺ隱堺ｸｭ",
+  client_review: "莨∵･ｭ遒ｺ隱堺ｸｭ",
+  published: "蜈ｬ髢・,
+  completed: "螳御ｺ・,
+  paused: "荳譎ょ●豁｢荳ｭ",
+  stopped: "蛛懈ｭ｢蜃ｦ逅・ｸ医∩",
+}
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "蛻ｶ菴懈｡井ｻｶ縺ｮ髢ｲ隕ｧ讓ｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  const { id } = await params
+  const task = await prisma.productionTask.findUnique({
+    where: { id },
+    include: {
+      company: {
+        include: {
+          user: { select: { id: true, name: true } },
+          monthlyRecords: { orderBy: [{ year: "asc" }, { month: "asc" }] },
+        },
+      },
+      assignee: { select: { id: true, name: true } },
+      requester: { select: { id: true, name: true } },
+      lastUpdatedBy: { select: { id: true, name: true } },
+    },
+  })
+
+  if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 })
+  return NextResponse.json(task)
+}
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { id } = await params
+  const body = await req.json()
+
+  const existing = await prisma.productionTask.findUnique({ where: { id } })
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  const admin = isAdmin(session)
+  const production = isProduction(session)
+  const sales = isSales(session)
+  const isRequester = existing.requesterId === session.user.id
+
+  // 邱ｨ髮・〒縺阪ｋ縺ｮ縺ｯ 邂｡逅・・/ 蛻ｶ菴・/ 萓晞ｼ蝟ｶ讌ｭ譛ｬ莠ｺ
+  const canEdit = admin || production || (sales && isRequester)
+  if (!canEdit) {
+    return NextResponse.json({ error: "縺薙・譯井ｻｶ繧堤ｷｨ髮・☆繧区ｨｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  if (body.status === "completed" && !admin && !isRequester) {
+    return NextResponse.json({ error: "譯井ｻｶ繧貞ｮ御ｺ・↓縺ｧ縺阪ｋ縺ｮ縺ｯ萓晞ｼ蝟ｶ讌ｭ縺ｨ邂｡逅・・・縺ｿ縺ｧ縺・ }, { status: 403 })
+  }
+
+  if (body.assigneeId !== undefined && !admin && !production) {
+    return NextResponse.json({ error: "蛻ｶ菴懈球蠖薙ｒ螟画峩縺ｧ縺阪ｋ縺ｮ縺ｯ蛻ｶ菴懈球蠖楢・→邂｡逅・・・縺ｿ縺ｧ縺・ }, { status: 403 })
+  }
+
+  const data: Record<string, unknown> = {}
+  if (body.name !== undefined) data.name = body.name
+  if (body.type !== undefined) data.type = body.type
+  if (body.priority !== undefined) data.priority = body.priority
+  if (body.status !== undefined) data.status = body.status
+  if (body.memo !== undefined) data.memo = body.memo || null
+  if (body.dueDate !== undefined) data.dueDate = body.dueDate ? new Date(body.dueDate) : null
+  if (body.publishedAt !== undefined) data.publishedAt = body.publishedAt ? new Date(body.publishedAt) : null
+  if (body.stoppedAt !== undefined) data.stoppedAt = body.stoppedAt ? new Date(body.stoppedAt) : null
+  if (body.assigneeId !== undefined) data.assigneeId = body.assigneeId || null
+
+  data.lastUpdatedById = session.user.id
+
+  const task = await prisma.productionTask.update({
+    where: { id },
+    data,
+    include: {
+      company: { select: { id: true, name: true, companyId: true } },
+      assignee: { select: { id: true, name: true, chatworkAccountId: true } },
+      requester: { select: { id: true, name: true, chatworkAccountId: true } },
+      lastUpdatedBy: { select: { id: true, name: true } },
+    },
+  })
+
+  const statusChanged = body.status !== undefined && body.status !== existing.status
+  if (statusChanged) {
+    const from = STATUS_LABELS[existing.status] ?? existing.status
+    const to = STATUS_LABELS[body.status] ?? body.status
+    await prisma.taskComment.create({
+      data: {
+        taskId: id,
+        userId: session.user.id,
+        body: "繧ｹ繝・・繧ｿ繧ｹ繧偵・ + from + "縲阪°繧峨・ + to + "縲阪↓螟画峩縺励∪縺励◆",
+        isSystem: true,
+      },
+    })
+  }
+
+  const newAssigneeId: string | null = body.assigneeId !== undefined ? (body.assigneeId || null) : existing.assigneeId
+  const assigneeChanged = body.assigneeId !== undefined && newAssigneeId !== existing.assigneeId
+  if (assigneeChanged) {
+    const msg = task.assignee
+      ? "蛻ｶ菴懈球蠖薙ｒ " + task.assignee.name + " 縺ｫ險ｭ螳壹＠縺ｾ縺励◆"
+      : "蛻ｶ菴懈球蠖薙ｒ譛ｪ蜑ｲ蠖薙↓謌ｻ縺励∪縺励◆"
+    await prisma.taskComment.create({
+      data: {
+        taskId: id,
+        userId: session.user.id,
+        body: msg,
+        isSystem: true,
+      },
+    })
+  }
+
+  const link = APP_URL + "/production/" + task.id
+  const commonInfo =
+    "譯井ｻｶ: " + task.name + "\n" +
+    "莨∵･ｭ: " + (task.company?.name ?? "-") + "\n" +
+    "蛻ｶ菴懈球蠖・ " + (task.assignee?.name ?? "譛ｪ蜑ｲ蠖・) + "\n" +
+    "萓晞ｼ蝟ｶ讌ｭ: " + (task.requester?.name ?? "-") + "\n"
+
+  // ChatWork騾夂衍: 蛻ｶ菴懈球蠖薙′豎ｺ縺ｾ縺｣縺滂ｼ域悴蜑ｲ蠖凪・諡・ｽ薙≠繧翫√∪縺溘・諡・ｽ薙・螟画峩・・  // 繝ｻ萓晞ｼ蝟ｶ讌ｭ 竊・縲梧球蠖薙′豎ｺ縺ｾ繧翫∪縺励◆縲・  // 繝ｻ譁ｰ縺励＞諡・ｽ楢・竊・莉悶・莠ｺ縺ｫ蜑ｲ繧雁ｽ薙※繧峨ｌ縺溷ｴ蜷医・縺ｿ・郁・蛻・〒閾ｪ蛻・ｒ險ｭ螳壹＠縺溘→縺阪・騾√ｉ縺ｪ縺・ｼ・  // 繝ｻ謫堺ｽ懊＠縺滓悽莠ｺ縺ｫ縺ｯ繝｡繝ｳ繧ｷ繝ｧ繝ｳ縺励↑縺・  if (assigneeChanged && task.assignee) {
+    const actorId = session.user.id
+    const targets = [
+      task.requester && task.requester.id !== actorId ? task.requester : null,
+      task.assignee.id !== actorId ? task.assignee : null,
+    ]
+    const mentions = buildMentions(targets)
+    await notifyChatwork(
+      mentions +
+      "[info][title]側 蛻ｶ菴懈球蠖薙′豎ｺ縺ｾ繧翫∪縺励◆[/title]\n" +
+      commonInfo +
+      "險ｭ螳夊・ " + (task.lastUpdatedBy?.name ?? "-") + "\n" +
+      "\n" + link +
+      "[/info]"
+    )
+  }
+
+  // ChatWork騾夂衍・医せ繝・・繧ｿ繧ｹ螟画峩縺ｮ縺・■隕√い繧ｯ繧ｷ繝ｧ繝ｳ縺ｮ縺ｨ縺阪□縺托ｼ・  if (statusChanged) {
+    if (body.status === "sales_review") {
+      // 蝟ｶ讌ｭ遒ｺ隱堺ｸｭ 竊・萓晞ｼ蝟ｶ讌ｭ縺ｫ繝｡繝ｳ繧ｷ繝ｧ繝ｳ
+      const mentions = buildMentions([task.requester])
+      await notifyChatwork(
+        mentions +
+        "[info][title]耳 蝟ｶ讌ｭ遒ｺ隱阪ｒ縺企｡倥＞縺励∪縺兌/title]\n" +
+        commonInfo +
+        "\n蛻ｶ菴懃黄縺ｮ遒ｺ隱阪ｒ縺企｡倥＞縺励∪縺吶・n" +
+        link +
+        "[/info]"
+      )
+    } else if (body.status === "completed") {
+      // 螳御ｺ・竊・蛻ｶ菴懈球蠖薙↓繝｡繝ｳ繧ｷ繝ｧ繝ｳ
+      const mentions = buildMentions([task.assignee])
+      await notifyChatwork(
+        mentions +
+        "[info][title]笨・譯井ｻｶ縺悟ｮ御ｺ・＠縺ｾ縺励◆[/title]\n" +
+        commonInfo +
+        "螳御ｺ・・ " + (task.lastUpdatedBy?.name ?? "-") + "\n" +
+        "\n" + link +
+        "[/info]"
+      )
+    } else if (body.status === "client_review") {
+      // 莨∵･ｭ遒ｺ隱堺ｸｭ 竊・繝｡繝ｳ繧ｷ繝ｧ繝ｳ縺ｪ縺暦ｼ亥霧讌ｭ閾ｪ霄ｫ縺悟､画峩縺励◆縺ｯ縺壹↑縺ｮ縺ｧ・・      await notifyChatwork(
+        "[info][title]召 莨∵･ｭ遒ｺ隱阪ヵ繧ｧ繝ｼ繧ｺ縺ｫ騾ｲ縺ｿ縺ｾ縺励◆[/title]\n" +
+        commonInfo +
+        "\n蝟ｶ讌ｭ縺御ｼ∵･ｭ縺ｸ遒ｺ隱堺ｸｭ縺ｧ縺吶・n" +
+        link +
+        "[/info]"
+      )
+    }
+  }
+
+  return NextResponse.json(task)
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { id } = await params
+
+  const existing = await prisma.productionTask.findUnique({ where: { id } })
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  const admin = isAdmin(session)
+  const isRequester = existing.requesterId === session.user.id
+  if (!admin && !isRequester) {
+    return NextResponse.json({ error: "縺薙・譯井ｻｶ繧貞炎髯､縺吶ｋ讓ｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  await prisma.productionTask.delete({ where: { id } })
+  return NextResponse.json({ success: true })
+}
+
+===== C:\Users\ueyam\Desktop\tenshokudo-db\src\app\api\production-tasks\[id]\comments\route.ts
+import { NextResponse } from "next/server"
+import { auth } from "@/auth"
+import { PrismaClient } from "@prisma/client"
+import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
+import { canViewProduction } from "@/lib/permissions"
+
+const prisma = new PrismaClient()
+
+// GET: 譯井ｻｶ縺ｮ繧ｳ繝｡繝ｳ繝井ｸ隕ｧ・亥商縺・・ｼ昴ち繧､繝繝ｩ繧､繝ｳ・・
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "蛻ｶ菴懈｡井ｻｶ縺ｮ髢ｲ隕ｧ讓ｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  const { id } = await params
+
+  const comments = await prisma.taskComment.findMany({
+    where: { taskId: id },
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "asc" },
+  })
+
+  return NextResponse.json(comments)
+}
+
+// POST: 繧ｳ繝｡繝ｳ繝医ｒ謚慕ｨｿ・井ｺｺ縺梧嶌縺・◆繧ｳ繝｡繝ｳ繝茨ｼ・
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  if (!canViewProduction(session)) {
+    return NextResponse.json({ error: "蛻ｶ菴懈｡井ｻｶ縺ｫ繧ｳ繝｡繝ｳ繝医☆繧区ｨｩ髯舌′縺ゅｊ縺ｾ縺帙ｓ" }, { status: 403 })
+  }
+
+  const { id } = await params
+  const body = await req.json()
+
+  if (!body.body || !body.body.trim()) {
+    return NextResponse.json({ error: "繧ｳ繝｡繝ｳ繝医ｒ蜈･蜉帙＠縺ｦ縺上□縺輔＞" }, { status: 400 })
+  }
+
+  const task = await prisma.productionTask.findUnique({
+    where: { id },
+    include: {
+      company: { select: { name: true } },
+      assignee: { select: { id: true, name: true, chatworkAccountId: true } },
+      requester: { select: { id: true, name: true, chatworkAccountId: true } },
+    },
+  })
+  if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+  const comment = await prisma.taskComment.create({
+    data: {
+      taskId: id,
+      userId: session.user.id,
+      body: body.body.trim(),
+      isSystem: false,
+    },
+    include: { user: { select: { id: true, name: true } } },
+  })
+
+  // 謚慕ｨｿ閠・ｻ･螟悶・髢｢菫り・ｼ亥宛菴懈球蠖薙・萓晞ｼ蝟ｶ讌ｭ・峨ｒ繝｡繝ｳ繧ｷ繝ｧ繝ｳ
+  const targets = [task.assignee, task.requester].filter(
+    u => u && u.id !== session.user.id
+  )
+  const mentions = buildMentions(targets)
+
+  // ChatWork騾夂衍・医ｄ繧雁叙繧翫′逋ｺ逕溘＠縺滂ｼ晉嶌謇九・繧｢繧ｯ繧ｷ繝ｧ繝ｳ縺悟ｿ・ｦ・ｼ・
+  await notifyChatwork(
+    mentions +
+    "[info][title]町 繧ｳ繝｡繝ｳ繝医′謚慕ｨｿ縺輔ｌ縺ｾ縺励◆[/title]\n" +
+    "譯井ｻｶ: " + task.name + "\n" +
+    "莨∵･ｭ: " + (task.company?.name ?? "-") + "\n" +
+    "謚慕ｨｿ閠・ " + (comment.user?.name ?? "-") + "\n" +
+    "蛻ｶ菴懈球蠖・ " + (task.assignee?.name ?? "譛ｪ蜑ｲ蠖・) + " / 萓晞ｼ蝟ｶ讌ｭ: " + (task.requester?.name ?? "-") + "\n" +
+    "\n" + comment.body + "\n" +
+    "\n" + APP_URL + "/production/" + task.id +
+    "[/info]"
+  )
+
+  return NextResponse.json(comment)
+}

@@ -1,10 +1,9 @@
+// 置き場所: src/app/api/production-tasks/[id]/comments/route.ts
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 import { notifyChatwork, APP_URL, buildMentions } from "@/lib/chatwork"
 import { canViewProduction } from "@/lib/permissions"
-
-const prisma = new PrismaClient()
 
 // GET: 案件のコメント一覧（古い順＝タイムライン）
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -38,7 +37,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params
   const body = await req.json()
 
-  if (!body.body || !body.body.trim()) {
+  if (!body.body || !String(body.body).trim()) {
     return NextResponse.json({ error: "コメントを入力してください" }, { status: 400 })
   }
 
@@ -47,38 +46,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     include: {
       company: { select: { name: true } },
       assignee: { select: { id: true, name: true, chatworkAccountId: true } },
+      subAssignees: { select: { id: true, name: true, chatworkAccountId: true } },
       requester: { select: { id: true, name: true, chatworkAccountId: true } },
     },
   })
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const comment = await prisma.taskComment.create({
-    data: {
-      taskId: id,
-      userId: session.user.id,
-      body: body.body.trim(),
-      isSystem: false,
-    },
+    data: { taskId: id, userId: session.user.id, body: String(body.body).trim(), isSystem: false },
     include: { user: { select: { id: true, name: true } } },
   })
 
-  // 投稿者以外の関係者（制作担当・依頼営業）をメンション
-  const targets = [task.assignee, task.requester].filter(
-    u => u && u.id !== session.user.id
-  )
-  const mentions = buildMentions(targets)
+  // 投稿者以外の関係者（担当・サブ担当・起票者）にメンション
+  const targets = [task.assignee, ...task.subAssignees, task.requester].filter(u => u && u.id !== session.user.id)
+  const assigneeNames = [task.assignee?.name, ...task.subAssignees.map(u => u.name)].filter(Boolean).join("・")
 
-  // ChatWork通知（やり取りが発生した＝相手のアクションが必要）
   await notifyChatwork(
-    mentions +
+    buildMentions(targets) +
     "[info][title]💬 コメントが投稿されました[/title]\n" +
     "案件: " + task.name + "\n" +
-    "企業: " + (task.company?.name ?? "-") + "\n" +
+    (task.company ? "企業: " + task.company.name + "\n" : "") +
     "投稿者: " + (comment.user?.name ?? "-") + "\n" +
-    "制作担当: " + (task.assignee?.name ?? "未割当") + " / 依頼営業: " + (task.requester?.name ?? "-") + "\n" +
+    "担当: " + (assigneeNames || "未割当") + " / 起票: " + (task.requester?.name ?? "-") + "\n" +
     "\n" + comment.body + "\n" +
     "\n" + APP_URL + "/production/" + task.id +
-    "[/info]"
+    "[/info]",
   )
 
   return NextResponse.json(comment)

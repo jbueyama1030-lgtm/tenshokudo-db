@@ -24,6 +24,7 @@ model User {
   createdAt DateTime  @default(now())
   companies Company[]
   assignedTasks  ProductionTask[] @relation("TaskAssignee")
+  subAssignedTasks ProductionTask[] @relation("TaskSubAssignees")
   requestedTasks ProductionTask[] @relation("TaskRequester")
   updatedTasks   ProductionTask[] @relation("TaskLastUpdatedBy")
   taskComments   TaskComment[]
@@ -165,9 +166,13 @@ model MonthlyRecord {
 }
 
 model ProductionTask {
-  id        String  @id @default(cuid())
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  id        String   @id @default(cuid())
+  // 紐づく企業（記事制作は必須。開発・資料作成など社内タスクは null 可）
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  // 分類: article=記事制作 / hp_lp / dev / document / subsidy / other
+  category String   @default("article")
 
   name     String
   type     String   @default("new")
@@ -178,9 +183,15 @@ model ProductionTask {
   publishedAt DateTime?
   stoppedAt   DateTime?
 
-  // 制作担当（未割当null可）
+  // 制作担当（メイン。未割当null可）
   assigneeId String?
   assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  // サブ担当（複数人で担当するとき）
+  subAssignees User[] @relation("TaskSubAssignees")
+
+  // 今のステータスになった日時（滞留日数の表示に使う）
+  statusChangedAt DateTime @default(now())
 
   // 依頼営業
   requesterId String?

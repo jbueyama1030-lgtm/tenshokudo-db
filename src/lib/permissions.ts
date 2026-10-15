@@ -1,3 +1,4 @@
+// 置き場所: src/lib/permissions.ts
 // 権限判定の共通ヘルパー
 // セッションの roles を正として判定する。
 // ただし移行期間中、既存ログイン者は roles が空のため role にフォールバックする。
@@ -128,10 +129,10 @@ export function canViewProduction(session: SessionLike): boolean {
   return isSales(session) || isProduction(session) || isAdmin(session)
 }
 
-// 制作案件を起票できるか
+// 制作案件・社内タスクを起票できるか（制作も社内タスクを起票するため追加）
 export function canCreateTask(session: SessionLike): boolean {
   if (isAgencyUser(session)) return false
-  return isSales(session) || isAdmin(session)
+  return isSales(session) || isProduction(session) || isAdmin(session)
 }
 
 // 制作案件の担当割当・ステータス変更ができるか
