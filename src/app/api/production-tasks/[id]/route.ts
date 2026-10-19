@@ -76,6 +76,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "担当を変更できるのは制作担当者・起票者・管理者のみです" }, { status: 403 })
   }
 
+  // アーカイブは「完了」（社内タスク・記事制作とも）と「停止」のものだけ
+  if (body.archived === true && !["completed", "stopped"].includes(body.status ?? existing.status)) {
+    return NextResponse.json({ error: "アーカイブできるのは完了・停止した案件だけです" }, { status: 400 })
+  }
+
   if (body.status !== undefined && !ALL_STATUSES.includes(body.status)) {
     return NextResponse.json({ error: "不正なステータスです" }, { status: 400 })
   }
@@ -102,6 +107,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (Array.isArray(body.subAssigneeIds)) {
     data.subAssignees = { set: body.subAssigneeIds.filter(Boolean).map((x: string) => ({ id: x })) }
   }
+  if (body.archived === true) data.archivedAt = new Date()
+  if (body.archived === false) data.archivedAt = null
 
   const statusChanged = body.status !== undefined && body.status !== existing.status
   if (statusChanged) {
@@ -132,6 +139,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     await prisma.taskComment.create({
       data: { taskId: id, userId: me, body: "ステータスを「" + from + "」から「" + to + "」に変更しました", isSystem: true },
     })
+  }
+
+  if (body.archived === true && !existing.archivedAt) {
+    await prisma.taskComment.create({ data: { taskId: id, userId: me, body: "アーカイブしました", isSystem: true } })
+  }
+  if (body.archived === false && existing.archivedAt) {
+    await prisma.taskComment.create({ data: { taskId: id, userId: me, body: "アーカイブから戻しました", isSystem: true } })
   }
 
   const newAssigneeId: string | null = body.assigneeId !== undefined ? body.assigneeId || null : existing.assigneeId

@@ -27,6 +27,7 @@ type Task = {
   memo: string | null
   dueDate: string | null
   statusChangedAt: string
+  archivedAt: string | null
   updatedAt: string
   createdAt: string
   company: { id: string; name: string; companyId: string | null } | null
@@ -39,7 +40,7 @@ type CompanyLite = { id: string; name: string; companyId: string | null }
 
 /** 同じステータスで止まっていたら警告する日数 */
 const STALE_DAYS = 5
-/** 「公開・完了」列に出す期間（日） */
+/** 「公開・完了」列に出す期間（日）。これより古い完了は、アーカイブしていなくてもアーカイブ欄に回す */
 const DONE_SHOW_DAYS = 30
 
 type AlertKey = "overdue" | "thisWeek" | "unassigned" | "stale"
@@ -208,6 +209,22 @@ export default function ProductionDashboardPage() {
     await loadTasks()
   }
 
+  // 完了した案件をアーカイブする／戻す（ids を複数渡すとまとめて）
+  const setArchived = async (ids: string[], archived: boolean) => {
+    if (ids.length === 0) return
+    if (archived && ids.length > 1 && !confirm("完了した " + ids.length + " 件をアーカイブしますか？")) return
+    setMoveErr("")
+    const results = await Promise.all(ids.map(id =>
+      fetch("/api/production-tasks/" + id, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      }).then(r => r.ok),
+    ))
+    if (results.some(ok => !ok)) setMoveErr("一部の案件をアーカイブできませんでした")
+    await loadTasks()
+  }
+
   // 公開済みの記事制作を「完了」にする（依頼営業・管理者）
   const completeTask = async (taskId: string) => {
     const t = tasks.find(x => x.id === taskId)
@@ -249,15 +266,16 @@ export default function ProductionDashboardPage() {
   }
   const alertIds = alertFilter ? new Set(alerts[alertFilter].map(t => t.id)) : null
 
+  const isArchivedLike = (t: Task) =>
+    !!t.archivedAt || t.status === "stopped" || (t.status === "completed" && daysSince(t.statusChangedAt) > DONE_SHOW_DAYS)
   const boardTasks = scoped.filter(t => {
     if (alertIds && !alertIds.has(t.id)) return false
-    if (t.status === "stopped") return false
-    if (["published", "completed"].includes(t.status)) return daysSince(t.statusChangedAt) <= DONE_SHOW_DAYS
-    return true
+    return !isArchivedLike(t)
   })
-  const archived = scoped.filter(
-    t => t.status === "stopped" || (["published", "completed"].includes(t.status) && daysSince(t.statusChangedAt) > DONE_SHOW_DAYS),
-  )
+  const archived = scoped
+    .filter(isArchivedLike)
+    .sort((a, b) => (b.archivedAt ?? b.statusChangedAt).localeCompare(a.archivedAt ?? a.statusChangedAt))
+  const completedOnBoard = boardTasks.filter(t => t.status === "completed")
 
   // 担当者ごとの抱えている件数（メイン・サブの両方を数える）
   const load = new Map<string, { name: string; count: number }>()
@@ -319,6 +337,15 @@ export default function ProductionDashboardPage() {
         )}
         {FINISHED_STATUSES.includes(t.status) && (
           <div className="text-[11px] mt-0.5 text-green-600">{STATUS_LABELS[t.status]?.label} {t.statusChangedAt.slice(5, 10).replace("-", "/")}</div>
+        )}
+        {t.status === "completed" && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setArchived([t.id], true) }}
+            className="mt-2 w-full text-xs border border-gray-300 text-gray-600 rounded-md py-1 hover:bg-gray-50"
+          >
+            📦 アーカイブ
+          </button>
         )}
         {t.category === "article" && t.status === "published" && (t.requester?.id === userId || isAdminUser) && (
           <button
@@ -486,6 +513,15 @@ export default function ProductionDashboardPage() {
                           <span className="text-xs text-gray-500">{list.length}</span>
                         </div>
                         <div className="text-[10px] text-gray-400 h-3.5">{col.key === "done" ? "直近" + DONE_SHOW_DAYS + "日" : col.hint}</div>
+                        {col.key === "done" && completedOnBoard.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setArchived(completedOnBoard.map(t => t.id), true)}
+                            className="mt-1 text-[11px] text-gray-500 underline hover:text-gray-700"
+                          >
+                            完了 {completedOnBoard.length}件をまとめてアーカイブ
+                          </button>
+                        )}
                       </div>
                       {list.length === 0 ? (
                         <p className="text-xs text-gray-400 text-center py-6">なし</p>
@@ -522,18 +558,25 @@ export default function ProductionDashboardPage() {
               {/* アーカイブ */}
               <div className="bg-white rounded-xl border border-gray-200 p-4 mb-8">
                 <button type="button" onClick={() => setShowArchive(!showArchive)} className="flex items-center gap-2 w-full text-left">
-                  <span className="text-sm font-medium text-gray-500">アーカイブ（停止・{DONE_SHOW_DAYS}日より前に完了）</span>
+                  <span className="text-sm font-medium text-gray-500">アーカイブ（アーカイブ済み・停止・{DONE_SHOW_DAYS}日より前に完了）</span>
                   <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{archived.length}</span>
                   <span className="ml-auto text-xs text-gray-400">{showArchive ? "▲ 閉じる" : "▼ 表示する"}</span>
                 </button>
                 {showArchive && (
                   <div className="mt-3 divide-y divide-gray-100">
                     {archived.map(t => (
-                      <button key={t.id} type="button" onClick={() => router.push("/production/" + t.id)} className="w-full text-left flex items-center gap-3 py-2 text-sm hover:bg-gray-50">
+                      <div key={t.id} className="flex items-center gap-3 py-2 text-sm hover:bg-gray-50">
                         <span className={"text-[10px] px-1.5 py-0.5 rounded " + (STATUS_LABELS[t.status]?.cls ?? "")}>{STATUS_LABELS[t.status]?.label ?? t.status}</span>
-                        <span className="text-gray-900">{t.company ? t.company.name + " ／ " : ""}{t.name}</span>
-                        <span className="ml-auto text-xs text-gray-400">{t.statusChangedAt.slice(0, 10)}</span>
-                      </button>
+                        <button type="button" onClick={() => router.push("/production/" + t.id)} className="text-gray-900 text-left hover:text-blue-600 hover:underline">
+                          {t.company ? t.company.name + " ／ " : ""}{t.name}
+                        </button>
+                        <span className="ml-auto text-xs text-gray-400">{(t.archivedAt ?? t.statusChangedAt).slice(0, 10)}</span>
+                        {t.archivedAt && (
+                          <button type="button" onClick={() => setArchived([t.id], false)} className="text-xs text-blue-600 hover:underline">
+                            ボードに戻す
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}

@@ -193,6 +193,9 @@ model ProductionTask {
   // 今のステータスになった日時（滞留日数の表示に使う）
   statusChangedAt DateTime @default(now())
 
+  // アーカイブした日時（ダッシュボードの「公開・完了」から片付けたもの。ステータスは完了のまま残す）
+  archivedAt DateTime?
+
   // 依頼営業
   requesterId String?
   requester   User?   @relation("TaskRequester", fields: [requesterId], references: [id])
