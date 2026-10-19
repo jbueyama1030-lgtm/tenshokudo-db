@@ -21,9 +21,13 @@ export default function Sidebar({ userName }: { userName?: string }) {
       else setRoles([])
       setAgencyId(s?.user?.agencyId ?? null)
     })
+    // 進行中（完了・公開・停止・アーカイブ以外）で、担当が決まっていない案件の数
     fetch("/api/production-tasks").then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
-        setUnassignedCount(data.filter(t => !t.assignee).length)
+        const finished = ["published", "completed", "stopped"]
+        setUnassignedCount(
+          data.filter(t => !t.assignee && !t.archivedAt && !finished.includes(t.status)).length,
+        )
       }
     })
   }, [])
@@ -95,7 +99,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
                 >
                   <span>{link.label}</span>
                   {link.href === "/production" && unassignedCount > 0 && (
-                    <span className="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">{unassignedCount}</span>
+                    <span title={"担当が決まっていない進行中の案件：" + unassignedCount + "件"} className="ml-auto text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5 font-bold">{unassignedCount}</span>
                   )}
                 </a>
               )
