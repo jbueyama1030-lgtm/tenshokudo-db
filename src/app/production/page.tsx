@@ -43,6 +43,23 @@ const STALE_DAYS = 5
 const DONE_SHOW_DAYS = 30
 
 type AlertKey = "overdue" | "thisWeek" | "unassigned" | "stale"
+type ColumnKey = (typeof BOARD_COLUMNS)[number]["key"]
+
+/**
+ * カードを列にドロップしたときの移動先ステータス。null なら何もしない。
+ * - 確認待ち: 記事制作は「営業確認中」（企業確認中のものはそのまま）、社内タスクは「提出済」
+ * - 公開・完了: 記事制作は「公開」、社内タスクは「完了」
+ */
+function targetStatus(t: { category: string; status: string }, col: ColumnKey): string | null {
+  const isArticle = t.category === "article"
+  const current = BOARD_COLUMNS.find(c => (c.statuses as readonly string[]).includes(t.status))?.key
+  if (current === col) return null
+  if (col === "todo") return "not_started"
+  if (col === "doing") return "in_progress"
+  if (col === "review") return isArticle ? "sales_review" : "submitted"
+  if (col === "done") return isArticle ? "published" : "completed"
+  return null
+}
 
 const DAY = 86400000
 function startOfToday(): number {
@@ -73,6 +90,10 @@ export default function ProductionDashboardPage() {
   const [category, setCategory] = useState("")
   const [alertFilter, setAlertFilter] = useState<AlertKey | "">("")
   const [showArchive, setShowArchive] = useState(false)
+  // ドラッグ＆ドロップ
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dragOver, setDragOver] = useState<ColumnKey | null>(null)
+  const [moveErr, setMoveErr] = useState("")
 
   // 新規タスク
   const [creating, setCreating] = useState(false)
@@ -152,6 +173,29 @@ export default function ProductionDashboardPage() {
     await loadTasks()
   }
 
+  // カードを別の列へ移す（先に画面を更新し、失敗したら元に戻す）
+  const moveTask = async (taskId: string, col: ColumnKey) => {
+    const t = tasks.find(x => x.id === taskId)
+    if (!t) return
+    const next = targetStatus(t, col)
+    if (!next) return
+    setMoveErr("")
+    const prev = tasks
+    setTasks(tasks.map(x => (x.id === taskId ? { ...x, status: next, statusChangedAt: new Date().toISOString() } : x)))
+    const res = await fetch("/api/production-tasks/" + taskId, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => null)
+      setTasks(prev)
+      setMoveErr((t.company ? t.company.name + "：" : "") + (e?.error ?? "ステータスを変更できませんでした"))
+      return
+    }
+    await loadTasks()
+  }
+
   // ===== 集計 =====
   const isMine = (t: Task) =>
     t.assignee?.id === userId || t.subAssignees.some(u => u.id === userId) || t.requester?.id === userId
@@ -213,11 +257,16 @@ export default function ProductionDashboardPage() {
     const people = [t.assignee, ...t.subAssignees].filter((p): p is Person => !!p).map(p => p.name).join("・")
     const days = daysSince(t.statusChangedAt)
     return (
-      <button
+      <div
         key={t.id}
-        type="button"
+        role="button"
+        tabIndex={0}
+        draggable
+        onDragStart={e => { setDragId(t.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.id) }}
+        onDragEnd={() => { setDragId(null); setDragOver(null) }}
         onClick={() => router.push("/production/" + t.id)}
-        className="w-full text-left bg-white border border-gray-200 rounded-lg p-2.5 mb-2 hover:border-blue-300 hover:shadow-sm transition"
+        onKeyDown={e => { if (e.key === "Enter") router.push("/production/" + t.id) }}
+        className={"w-full text-left bg-white border border-gray-200 rounded-lg p-2.5 mb-2 hover:border-blue-300 hover:shadow-sm transition cursor-grab active:cursor-grabbing " + (dragId === t.id ? "opacity-40" : "")}
       >
         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
@@ -241,7 +290,7 @@ export default function ProductionDashboardPage() {
         {FINISHED_STATUSES.includes(t.status) && (
           <div className="text-[11px] mt-0.5 text-green-600">{STATUS_LABELS[t.status]?.label} {t.statusChangedAt.slice(5, 10).replace("-", "/")}</div>
         )}
-      </button>
+      </div>
     )
   }
 
@@ -365,12 +414,33 @@ export default function ProductionDashboardPage() {
                 </p>
               )}
 
+              {moveErr && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3 text-sm text-red-700 flex items-center">
+                  {moveErr}
+                  <button type="button" onClick={() => setMoveErr("")} className="ml-auto text-xs underline">閉じる</button>
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mb-2">カードをドラッグして別の列に移すと、ステータスが変わります。クリックで詳細を開きます。</p>
+
               {/* カンバン */}
               <div className="grid grid-cols-4 gap-3 mb-5">
                 {BOARD_COLUMNS.map(col => {
                   const list = boardTasks.filter(t => (col.statuses as readonly string[]).includes(t.status))
+                  const isOver = dragOver === col.key && dragId != null
                   return (
-                    <div key={col.key} className="bg-gray-100 rounded-xl p-2.5 min-h-[200px]">
+                    <div
+                      key={col.key}
+                      onDragOver={e => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOver !== col.key) setDragOver(col.key) } }}
+                      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(null) }}
+                      onDrop={e => {
+                        e.preventDefault()
+                        const id = e.dataTransfer.getData("text/plain") || dragId
+                        setDragOver(null)
+                        setDragId(null)
+                        if (id) moveTask(id, col.key)
+                      }}
+                      className={"rounded-xl p-2.5 min-h-[200px] transition " + (isOver ? "bg-blue-100 ring-2 ring-blue-300" : "bg-gray-100")}
+                    >
                       <div className="flex items-center gap-2 px-1 mb-2">
                         <span className="text-sm font-medium text-gray-700">{col.label}</span>
                         <span className="text-xs text-gray-500">{list.length}</span>
