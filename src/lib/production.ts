@@ -44,6 +44,7 @@ export const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   submitted: { label: "提出済", cls: "bg-purple-100 text-purple-700" },
   sales_review: { label: "営業確認中", cls: "bg-purple-100 text-purple-700" },
   client_review: { label: "企業確認中", cls: "bg-indigo-100 text-indigo-700" },
+  awaiting_publish: { label: "公開待ち（企業OK）", cls: "bg-teal-100 text-teal-700" },
   published: { label: "公開", cls: "bg-green-100 text-green-700" },
   completed: { label: "完了", cls: "bg-emerald-100 text-emerald-800" },
   paused: { label: "一時停止中", cls: "bg-orange-100 text-orange-700" },
@@ -53,25 +54,32 @@ export const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 /** 分類ごとに選べるステータス */
 export function statusOptionsFor(category: string): string[] {
   if (category === "article") {
-    return ["not_started", "in_progress", "sales_review", "client_review", "published", "completed", "paused", "stopped"]
+    return ["not_started", "in_progress", "sales_review", "client_review", "awaiting_publish", "published", "completed", "paused", "stopped"]
   }
   return ["not_started", "in_progress", "submitted", "completed", "paused", "stopped"]
 }
 
 export const ALL_STATUSES = Object.keys(STATUS_LABELS)
 
-/** ダッシュボードの列 */
+/**
+ * ダッシュボードの列（記事制作の流れに合わせて1段階＝1列）
+ * 記事制作: 未着手 →(制作)制作中 →(制作)営業確認 →(営業)企業確認 →(営業)公開待ち →(制作)公開 →(営業)完了
+ * 社内タスク: 未着手 → 対応中 → 提出済（営業確認の列）→ 完了
+ */
 export const BOARD_COLUMNS = [
-  { key: "todo", label: "未着手", statuses: ["not_started"] },
-  { key: "doing", label: "対応中", statuses: ["in_progress", "paused"] },
-  { key: "review", label: "確認待ち", statuses: ["submitted", "sales_review", "client_review"] },
-  { key: "done", label: "公開・完了", statuses: ["published", "completed"] },
+  { key: "todo", label: "未着手", statuses: ["not_started"], hint: "" },
+  { key: "doing", label: "制作中", statuses: ["in_progress", "paused"], hint: "" },
+  { key: "sales", label: "営業確認・提出済", statuses: ["sales_review", "submitted"], hint: "営業・起票者の確認待ち" },
+  { key: "client", label: "企業確認", statuses: ["client_review"], hint: "記事制作のみ" },
+  { key: "publish", label: "公開待ち", statuses: ["awaiting_publish"], hint: "企業OK・制作が公開" },
+  { key: "done", label: "公開・完了", statuses: ["published", "completed"], hint: "" },
 ] as const
 
 /** 確認待ちのとき、誰の返事待ちか */
 export function waitingFor(status: string): string | null {
   if (status === "sales_review") return "営業の確認待ち"
   if (status === "client_review") return "企業の確認待ち"
+  if (status === "awaiting_publish") return "制作の公開待ち"
   if (status === "submitted") return "確認待ち"
   return null
 }

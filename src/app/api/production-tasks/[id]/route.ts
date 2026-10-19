@@ -194,6 +194,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         "[info][title]✅ 完了しました[/title]\n" + commonInfo +
         "完了者: " + (task.lastUpdatedBy?.name ?? "-") + "\n\n" + link + "[/info]",
       )
+    } else if (body.status === "awaiting_publish") {
+      // 企業OK → 制作担当（メイン・サブ）に公開を依頼
+      const targets = [task.assignee, ...task.subAssignees].filter(u => u && u.id !== me)
+      await notifyChatwork(
+        buildMentions(targets) +
+        "[info][title]🚀 企業OKが出ました。公開をお願いします[/title]\n" + commonInfo +
+        "\n記事の公開をお願いします。公開したらステータスを「公開」にしてください。\n" + link + "[/info]",
+      )
+    } else if (body.status === "published" && task.category === "article") {
+      // 公開 → 依頼営業に完了の確認を依頼
+      const targets = [task.requester && task.requester.id !== me ? task.requester : null]
+      await notifyChatwork(
+        buildMentions(targets) +
+        "[info][title]🌐 記事を公開しました[/title]\n" + commonInfo +
+        "\n公開内容を確認して、問題なければ「完了」にしてください。\n" + link + "[/info]",
+      )
     } else if (body.status === "client_review") {
       await notifyChatwork(
         "[info][title]🏢 企業確認フェーズに進みました[/title]\n" + commonInfo +

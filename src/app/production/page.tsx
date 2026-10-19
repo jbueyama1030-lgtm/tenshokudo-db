@@ -46,19 +46,26 @@ type AlertKey = "overdue" | "thisWeek" | "unassigned" | "stale"
 type ColumnKey = (typeof BOARD_COLUMNS)[number]["key"]
 
 /**
- * カードを列にドロップしたときの移動先ステータス。null なら何もしない。
- * - 確認待ち: 記事制作は「営業確認中」（企業確認中のものはそのまま）、社内タスクは「提出済」
- * - 公開・完了: 記事制作は「公開」、社内タスクは「完了」
+ * カードを列にドロップしたときの移動先ステータス。
+ * - status: null なら何もしない（同じ列）
+ * - error: その列に移せない理由（社内タスクを企業確認・公開待ちに落とした場合など）
+ * 記事制作の「完了」は、公開済みカードの「完了にする」ボタンで行う
  */
-function targetStatus(t: { category: string; status: string }, col: ColumnKey): string | null {
+function targetStatus(t: { category: string; status: string }, col: ColumnKey): { status: string | null; error?: string } {
   const isArticle = t.category === "article"
   const current = BOARD_COLUMNS.find(c => (c.statuses as readonly string[]).includes(t.status))?.key
-  if (current === col) return null
-  if (col === "todo") return "not_started"
-  if (col === "doing") return "in_progress"
-  if (col === "review") return isArticle ? "sales_review" : "submitted"
-  if (col === "done") return isArticle ? "published" : "completed"
-  return null
+  if (current === col) return { status: null }
+  switch (col) {
+    case "todo": return { status: "not_started" }
+    case "doing": return { status: "in_progress" }
+    case "sales": return { status: isArticle ? "sales_review" : "submitted" }
+    case "client":
+      return isArticle ? { status: "client_review" } : { status: null, error: "企業確認の列は記事制作だけで使います" }
+    case "publish":
+      return isArticle ? { status: "awaiting_publish" } : { status: null, error: "公開待ちの列は記事制作だけで使います" }
+    case "done": return { status: isArticle ? "published" : "completed" }
+  }
+  return { status: null }
 }
 
 const DAY = 86400000
@@ -86,6 +93,7 @@ export default function ProductionDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [userName, setUserName] = useState("")
   const [userId, setUserId] = useState("")
+  const [isAdminUser, setIsAdminUser] = useState(false)
   const [onlyMine, setOnlyMine] = useState(false)
   const [category, setCategory] = useState("")
   const [alertFilter, setAlertFilter] = useState<AlertKey | "">("")
@@ -117,6 +125,8 @@ export default function ProductionDashboardPage() {
     fetch("/api/auth/session").then(r => r.json()).then(s => {
       setUserName(s?.user?.name ?? "")
       setUserId(s?.user?.id ?? "")
+      const roles: string[] = Array.isArray(s?.user?.roles) && s.user.roles.length > 0 ? s.user.roles : s?.user?.role ? [s.user.role] : []
+      setIsAdminUser(roles.includes("admin"))
     })
     loadTasks()
   }, [])
@@ -177,7 +187,9 @@ export default function ProductionDashboardPage() {
   const moveTask = async (taskId: string, col: ColumnKey) => {
     const t = tasks.find(x => x.id === taskId)
     if (!t) return
-    const next = targetStatus(t, col)
+    const target = targetStatus(t, col)
+    if (target.error) { setMoveErr(target.error); return }
+    const next = target.status
     if (!next) return
     setMoveErr("")
     const prev = tasks
@@ -191,6 +203,24 @@ export default function ProductionDashboardPage() {
       const e = await res.json().catch(() => null)
       setTasks(prev)
       setMoveErr((t.company ? t.company.name + "：" : "") + (e?.error ?? "ステータスを変更できませんでした"))
+      return
+    }
+    await loadTasks()
+  }
+
+  // 公開済みの記事制作を「完了」にする（依頼営業・管理者）
+  const completeTask = async (taskId: string) => {
+    const t = tasks.find(x => x.id === taskId)
+    if (!t || !confirm((t.company ? t.company.name + "「" : "「") + t.name + "」を完了にしますか？")) return
+    setMoveErr("")
+    const res = await fetch("/api/production-tasks/" + taskId, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "completed" }),
+    })
+    if (!res.ok) {
+      const e = await res.json().catch(() => null)
+      setMoveErr(e?.error ?? "完了にできませんでした")
       return
     }
     await loadTasks()
@@ -289,6 +319,15 @@ export default function ProductionDashboardPage() {
         )}
         {FINISHED_STATUSES.includes(t.status) && (
           <div className="text-[11px] mt-0.5 text-green-600">{STATUS_LABELS[t.status]?.label} {t.statusChangedAt.slice(5, 10).replace("-", "/")}</div>
+        )}
+        {t.category === "article" && t.status === "published" && (t.requester?.id === userId || isAdminUser) && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); completeTask(t.id) }}
+            className="mt-2 w-full text-xs bg-emerald-600 text-white rounded-md py-1 hover:bg-emerald-700"
+          >
+            ✓ 完了にする
+          </button>
         )}
       </div>
     )
@@ -420,10 +459,10 @@ export default function ProductionDashboardPage() {
                   <button type="button" onClick={() => setMoveErr("")} className="ml-auto text-xs underline">閉じる</button>
                 </div>
               )}
-              <p className="text-xs text-gray-400 mb-2">カードをドラッグして別の列に移すと、ステータスが変わります。クリックで詳細を開きます。</p>
+              <p className="text-xs text-gray-400 mb-2">カードをドラッグして別の列に移すと、ステータスが変わります。クリックで詳細を開きます。公開済みの記事は、依頼営業がカードの「完了にする」で締めます。</p>
 
               {/* カンバン */}
-              <div className="grid grid-cols-4 gap-3 mb-5">
+              <div className="grid grid-cols-6 gap-2 mb-5">
                 {BOARD_COLUMNS.map(col => {
                   const list = boardTasks.filter(t => (col.statuses as readonly string[]).includes(t.status))
                   const isOver = dragOver === col.key && dragId != null
@@ -441,10 +480,12 @@ export default function ProductionDashboardPage() {
                       }}
                       className={"rounded-xl p-2.5 min-h-[200px] transition " + (isOver ? "bg-blue-100 ring-2 ring-blue-300" : "bg-gray-100")}
                     >
-                      <div className="flex items-center gap-2 px-1 mb-2">
-                        <span className="text-sm font-medium text-gray-700">{col.label}</span>
-                        <span className="text-xs text-gray-500">{list.length}</span>
-                        {col.key === "done" && <span className="text-[10px] text-gray-400 ml-auto">直近{DONE_SHOW_DAYS}日</span>}
+                      <div className="px-1 mb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-medium text-gray-700">{col.label}</span>
+                          <span className="text-xs text-gray-500">{list.length}</span>
+                        </div>
+                        <div className="text-[10px] text-gray-400 h-3.5">{col.key === "done" ? "直近" + DONE_SHOW_DAYS + "日" : col.hint}</div>
                       </div>
                       {list.length === 0 ? (
                         <p className="text-xs text-gray-400 text-center py-6">なし</p>
