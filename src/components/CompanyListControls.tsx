@@ -18,7 +18,7 @@ export function UserSelect({
     <select
       value={selected}
       onChange={e => router.push(hrefFor[e.target.value] ?? "/companies")}
-      className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white"
+      className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 bg-white min-w-[9rem]"
     >
       <option value="all">全員</option>
       {users.map(u => (

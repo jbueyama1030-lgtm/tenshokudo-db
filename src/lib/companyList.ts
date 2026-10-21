@@ -42,6 +42,8 @@ export type CompanyRow = {
   name: string
   status: string
   prefecture: string
+  address: string | null
+  phone: string | null
   userId: string
   userName: string
   temperature: string | null
@@ -67,6 +69,8 @@ export type CompanyListParams = {
   focus: string
   /** 人材紹介（advisor）向けの追加条件。prisma の where にそのまま混ぜる */
   extraWhere?: Record<string, unknown>
+  /** 指定すると、この企業IDだけに絞る（CSVの選択出力用） */
+  ids?: string[]
 }
 
 const DAY = 86400000
@@ -88,6 +92,7 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       ...(p.user !== "all" ? { userId: p.user } : {}),
       ...(p.status !== "all" ? { status: p.status } : {}),
       ...(p.extraWhere ?? {}),
+      ...(p.ids && p.ids.length > 0 ? { id: { in: p.ids } } : {}),
       ...(p.q
         ? {
             OR: [
@@ -100,7 +105,7 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
         : {}),
     },
     select: {
-      id: true, companyId: true, name: true, status: true, address: true, userId: true,
+      id: true, companyId: true, name: true, status: true, address: true, phone: true, userId: true,
       temperature: true, hasReferralContract: true, workplaceCertLevel: true,
       nextAction: true, nextActionDate: true, vehicleCount: true, adoptionChallenge: true, updatedAt: true,
       user: { select: { name: true, roles: true, role: true } },
@@ -191,6 +196,8 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       name: c.name,
       status: c.status,
       prefecture: extractPref(c.address),
+      address: c.address,
+      phone: c.phone,
       userId: c.userId,
       userName: c.user.name,
       temperature: c.temperature,

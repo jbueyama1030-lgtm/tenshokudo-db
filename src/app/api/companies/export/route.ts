@@ -19,6 +19,7 @@ function ymd(iso: string | null): string {
 
 /**
  * 企業一覧の CSV 書き出し。企業一覧と同じクエリ（user / status / q / focus）で絞り込んだまま出す。
+ * ids=カンマ区切りの企業ID（cuid）を渡すと、選択した企業だけを出す。
  * 代理店ユーザーは自代理店の企業だけ。
  */
 export async function GET(req: Request) {
@@ -31,13 +32,14 @@ export async function GET(req: Request) {
     status: sp.get("status") ?? "all",
     q: sp.get("q") ?? "",
     focus: sp.get("focus") ?? "",
+    ids: sp.get("ids") ? sp.get("ids")!.split(",").filter(Boolean) : undefined,
   })
 
-  const header = ["企業ID", "会社名", "都道府県", "ステータス", "担当者", "直近3か月の応募", "直近3か月の入社", "最終応募日", "次回アクション", "次回アクション日", "契約更新日", "要対応"]
+  const header = ["企業ID", "会社名", "都道府県", "電話番号", "ステータス", "担当者", "直近3か月の応募", "直近3か月の入社", "最終応募日", "次回アクション", "次回アクション日", "契約更新日", "要対応"]
   const lines = [header.join(",")]
   for (const r of rows) {
     lines.push([
-      r.companyId, r.name, r.prefecture, STATUS_LABEL[r.status] ?? r.status, r.userName,
+      r.companyId, r.name, r.prefecture, r.phone, STATUS_LABEL[r.status] ?? r.status, r.userName,
       r.apply3m, r.hire3m, ymd(r.lastAppliedAt), r.nextAction, ymd(r.nextActionDate), ymd(r.renewalDate),
       r.flags.filter(f => f.level !== "gray").map(f => f.label).join(" / "),
     ].map(esc).join(","))

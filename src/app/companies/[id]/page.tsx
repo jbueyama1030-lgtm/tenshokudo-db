@@ -1254,8 +1254,8 @@ export default function CompanyDetailPage() {
               : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
           </div>
 
-          {/* 制作案件 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
+          {/* 制作案件（企業一覧の「制作依頼」ボタンからここへ飛ぶ） */}
+          <div id="production" className="bg-white rounded-xl border border-gray-200 p-5 mb-8 scroll-mt-6">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">🎨 制作案件</h2>
 
             {canTask && (
