@@ -1,10 +1,11 @@
+// 置き場所: src/app/companies/page.tsx
 import Sidebar from "@/components/Sidebar"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 import { getRoles } from "@/lib/permissions"
-
-const prisma = new PrismaClient()
+import { buildCompanyList, FOCUS_OPTIONS, type CompanyRow } from "@/lib/companyList"
+import { LiveSearch, UserSelect } from "@/components/CompanyListControls"
 
 const STATUS_LABELS: Record<string, string> = {
   contracted: "✅ 契約中",
@@ -20,10 +21,10 @@ const STATUS_COLORS: Record<string, string> = {
   delisted: "bg-gray-100 text-gray-600",
 }
 
-const TEMP_LABELS: Record<string, { label: string; cls: string }> = {
-  hot: { label: "🔥 ホット", cls: "bg-red-100 text-red-800" },
-  warm: { label: "☀️ ウォーム", cls: "bg-yellow-100 text-yellow-800" },
-  cold: { label: "❄️ コールド", cls: "bg-blue-100 text-blue-800" },
+const FLAG_COLORS: Record<string, string> = {
+  red: "bg-red-100 text-red-700",
+  yellow: "bg-amber-100 text-amber-800",
+  gray: "bg-gray-100 text-gray-500",
 }
 
 // 紹介条件フィルタ（3択項目）: URLパラメータ名 → Companyのカラム名
@@ -35,26 +36,23 @@ const REFERRAL_COND_FILTERS = [
   { param: "age64", field: "condAge64", label: "64歳未経験" },
 ]
 
-// 働きやすい職場認証の表示（0=未取得, 1〜3=★の数）
-function certLabel(level: number | null | undefined): string {
-  const n = level ?? 0
-  if (n <= 0) return "未取得"
-  return "★".repeat(n)
-}
-
 // 3択フィルタの値を Prisma の in 条件に変換
-// "ok" → ["ok"] / "ok_consult" → ["ok", "consult"] / それ以外 → null（絞り込まない）
 function condValues(param: string | undefined): string[] | null {
   if (param === "ok") return ["ok"]
   if (param === "ok_consult") return ["ok", "consult"]
   return null
 }
 
+function md(iso: string): string {
+  const j = new Date(new Date(iso).getTime() + 9 * 3600000)
+  return `${j.getUTCMonth() + 1}/${j.getUTCDate()}`
+}
+
 type SearchParams = {
   user?: string
   status?: string
   q?: string
-  temp?: string
+  focus?: string
   referral?: string
   dorm?: string
   foreign?: string
@@ -69,19 +67,17 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   if (!session) redirect("/login")
 
   const params = await searchParams
-
   const roles = getRoles(session)
   const isAdvisorOnly = roles.includes("advisor") && !roles.includes("sales") && !roles.includes("admin")
+  const myAgencyId = session.user.agencyId ?? null
 
-  // advisor専用モードでは担当者で絞らない（初期表示=全企業）
-  const selectedUser = isAdvisorOnly
-    ? "all"
-    : (params.user === undefined ? session.user.id : params.user)
+  // 営業は最初から自分の担当だけ。advisor 専用モードは全企業
+  const selectedUser = isAdvisorOnly ? "all" : params.user === undefined ? session.user.id : params.user
   const selectedStatus = params.status ?? "all"
   const searchQuery = params.q ?? ""
-  const selectedTemp = params.temp ?? "all"
+  const selectedFocus = params.focus ?? ""
 
-  // 紹介条件フィルタの選択状態
+  // 紹介条件（advisor 専用）
   const selectedReferral = params.referral === "1"
   const selectedDorm = params.dorm === "1"
   const condParams: Record<string, string> = {
@@ -91,51 +87,68 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     accident: params.accident ?? "",
     age64: params.age64 ?? "",
   }
-
-  // 担当者タブ用ユーザー: roles に sales または admin を持つ人だけ。
-  // advisor（キャリアアドバイザー）は企業担当を持たないのでタブから除外する。
-  const candidateUsers = isAdvisorOnly ? [] : await prisma.user.findMany({
-    where: {
-      isActive: true,
-      roles: { hasSome: ["sales", "admin"] },
-    },
-    select: { id: true, name: true, roles: true },
-    orderBy: { name: "asc" },
-  })
-
-  const users = candidateUsers
-    .filter((u) => u.roles.some((r) => r === "sales" || r === "admin"))
-    .map((u) => ({ id: u.id, name: u.name }))
-
-  // 紹介条件の where 句を組み立て
   const referralWhere: Record<string, unknown> = {}
   if (selectedReferral) referralWhere.hasReferralContract = true
   if (selectedDorm) referralWhere.condDorm = true
-  REFERRAL_COND_FILTERS.forEach((f) => {
+  REFERRAL_COND_FILTERS.forEach(f => {
     const vals = condValues(condParams[f.param])
     if (vals) referralWhere[f.field] = { in: vals }
   })
+  const hasReferralFilter = selectedReferral || selectedDorm || Object.values(condParams).some(v => v !== "")
 
-  const companies = await prisma.company.findMany({
-    where: {
-      ...(selectedUser !== "all" ? { userId: selectedUser } : {}),
-      ...(selectedStatus !== "all" ? { status: selectedStatus } : {}),
-      ...(selectedTemp !== "all" ? { temperature: selectedTemp } : {}),
-      ...referralWhere,
-      ...(searchQuery ? {
-        OR: [
-          { name: { contains: searchQuery, mode: "insensitive" } },
-          { companyId: { contains: searchQuery, mode: "insensitive" } },
-          { address: { contains: searchQuery, mode: "insensitive" } },
-        ]
-      } : {}),
-    },
-    include: {
-      user: { select: { id: true, name: true } },
-      monthlyRecords: { select: { applyCount: true, hireCount: true } },
-    },
-    orderBy: { updatedAt: "desc" },
+  // 担当者の候補: 営業・管理者。代理店ユーザーには自代理店の人だけ
+  const users = isAdvisorOnly
+    ? []
+    : (
+        await prisma.user.findMany({
+          where: {
+            isActive: true,
+            roles: { hasSome: ["sales", "admin"] },
+            ...(myAgencyId ? { agencyId: myAgencyId } : {}),
+          },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        })
+      )
+
+  // 札の件数を出すため、focus なしで集計してから画面側で絞る
+  const allRows = await buildCompanyList(session, {
+    user: selectedUser,
+    status: selectedStatus,
+    q: searchQuery,
+    focus: "",
+    extraWhere: isAdvisorOnly ? referralWhere : undefined,
   })
+  const countFor = (key: string) =>
+    key === "attention"
+      ? allRows.filter(r => r.flags.some(f => f.level !== "gray")).length
+      : allRows.filter(r => r.flags.some(f => f.key === key)).length
+  const rows: CompanyRow[] = !selectedFocus
+    ? allRows
+    : selectedFocus === "attention"
+      ? allRows.filter(r => r.flags.some(f => f.level !== "gray"))
+      : allRows.filter(r => r.flags.some(f => f.key === selectedFocus))
+
+  // 現在の絞り込み状態を保ったままURLを組み立てる
+  const buildUrl = (overrides: Record<string, string>, base = "/companies") => {
+    const p = new URLSearchParams()
+    if (!isAdvisorOnly) p.set("user", selectedUser)
+    if (selectedStatus !== "all") p.set("status", selectedStatus)
+    if (searchQuery) p.set("q", searchQuery)
+    if (selectedFocus) p.set("focus", selectedFocus)
+    if (selectedReferral) p.set("referral", "1")
+    if (selectedDorm) p.set("dorm", "1")
+    Object.entries(condParams).forEach(([k, v]) => { if (v) p.set(k, v) })
+    Object.entries(overrides).forEach(([k, v]) => {
+      if (k !== "user" && (v === "all" || v === "")) p.delete(k)
+      else p.set(k, v)
+    })
+    const str = p.toString()
+    return base + (str ? "?" + str : "")
+  }
+
+  const userHref: Record<string, string> = { all: buildUrl({ user: "all" }) }
+  users.forEach(u => { userHref[u.id] = buildUrl({ user: u.id }) })
 
   const statusTabs = [
     { key: "all", label: "すべて" },
@@ -145,88 +158,60 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     { key: "delisted", label: "📉 掲載落ち" },
   ]
 
-  const tempTabs = [
-    { key: "all", label: "すべて" },
-    { key: "hot", label: "🔥 ホット" },
-    { key: "warm", label: "☀️ ウォーム" },
-    { key: "cold", label: "❄️ コールド" },
-  ]
-
-  // 現在の絞り込み状態を保ったままURLを組み立てる
-  const buildUrl = (overrides: Record<string, string>) => {
-    const p = new URLSearchParams()
-    if (!isAdvisorOnly) p.set("user", selectedUser)
-    if (selectedStatus !== "all") p.set("status", selectedStatus)
-    if (searchQuery) p.set("q", searchQuery)
-    if (selectedTemp !== "all") p.set("temp", selectedTemp)
-    if (selectedReferral) p.set("referral", "1")
-    if (selectedDorm) p.set("dorm", "1")
-    Object.entries(condParams).forEach(([k, v]) => {
-      if (v) p.set(k, v)
-    })
-    Object.entries(overrides).forEach(([k, v]) => {
-      if (v === "all" || v === "") p.delete(k)
-      else p.set(k, v)
-    })
-    if (!isAdvisorOnly && !p.has("user")) p.set("user", selectedUser)
-    const str = p.toString()
-    return "/companies" + (str ? "?" + str : "")
-  }
-
-  // 紹介条件フィルタが1つでも効いているか
-  const hasReferralFilter =
-    selectedReferral || selectedDorm || Object.values(condParams).some((v) => v !== "")
+  const showUserColumn = selectedUser === "all"
+  const isMine = selectedUser === session.user.id
 
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar userName={session.user?.name ?? ""} />
       <main className="flex-1 overflow-auto">
         <div className="px-8 py-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3 mb-5">
             <h1 className="text-xl font-bold text-gray-800">
-              {isAdvisorOnly ? "企業一覧（人材紹介）" : "企業一覧"}
+              {isAdvisorOnly ? "企業一覧（人材紹介）" : isMine ? "自分の担当企業" : "企業一覧"}
             </h1>
+            <div className="flex-1" />
+            <a href={buildUrl({}, "/api/companies/export")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 bg-white hover:bg-gray-50">
+              ⬇ CSV
+            </a>
             {!isAdvisorOnly && (
               <a href="/companies/new" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">＋ 企業追加</a>
             )}
           </div>
 
-          {/* 検索バー */}
-          <form method="GET" action="/companies" className="mb-4">
-            {!isAdvisorOnly && selectedUser !== "all" && <input type="hidden" name="user" value={selectedUser} />}
-            {selectedStatus !== "all" && <input type="hidden" name="status" value={selectedStatus} />}
-            {selectedTemp !== "all" && <input type="hidden" name="temp" value={selectedTemp} />}
-            {selectedReferral && <input type="hidden" name="referral" value="1" />}
-            {selectedDorm && <input type="hidden" name="dorm" value="1" />}
-            {Object.entries(condParams).map(([k, v]) => (
-              v ? <input key={k} type="hidden" name={k} value={v} /> : null
-            ))}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                name="q"
-                defaultValue={searchQuery}
-                placeholder="会社名・企業ID・住所で検索..."
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">🔍 検索</button>
-              {searchQuery && (
-                <a href={buildUrl({ q: "" })} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">✕ クリア</a>
-              )}
-            </div>
-          </form>
+          {/* 担当者・検索 */}
+          <div className="flex gap-2 mb-4">
+            {!isAdvisorOnly && <UserSelect users={users} selected={selectedUser} hrefFor={userHref} />}
+            <LiveSearch initial={searchQuery} baseHref={buildUrl({ q: "" })} />
+          </div>
 
-          {/* 担当者タブ（advisor専用モードでは非表示） */}
+          {/* 今日やること（advisor 専用モード以外） */}
           {!isAdvisorOnly && (
-            <div className="flex gap-1 mb-3 border-b border-gray-200 overflow-x-auto">
-              <a href={buildUrl({ user: "all" })} className={"px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap " + (selectedUser === "all" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700")}>全員</a>
-              {users.map((user) => (
-                <a key={user.id} href={buildUrl({ user: user.id })} className={"px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap " + (selectedUser === user.id ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700")}>{user.name}</a>
-              ))}
+            <div className="flex gap-2 flex-wrap mb-3">
+              <a href={buildUrl({ focus: "" })} className={"px-3 py-1.5 rounded-full text-xs font-medium border " + (!selectedFocus ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400")}>
+                すべて <span className="opacity-70">{allRows.length}</span>
+              </a>
+              {FOCUS_OPTIONS.map(f => {
+                const n = countFor(f.key)
+                const on = selectedFocus === f.key
+                return (
+                  <a key={f.key} href={buildUrl({ focus: f.key })}
+                    className={"px-3 py-1.5 rounded-full text-xs font-medium border " + (on ? "bg-red-600 text-white border-red-600" : n > 0 ? "bg-white text-red-700 border-red-200 hover:border-red-400" : "bg-white text-gray-400 border-gray-200")}>
+                    {f.label} <span className="opacity-70">{n}</span>
+                  </a>
+                )
+              })}
             </div>
           )}
 
-          {/* 紹介条件フィルタ（advisor専用モードのみ表示） */}
+          {/* ステータス */}
+          <div className="flex gap-2 flex-wrap mb-5">
+            {statusTabs.map(tab => (
+              <a key={tab.key} href={buildUrl({ status: tab.key })} className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " + (selectedStatus === tab.key ? "bg-blue-600 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-blue-400")}>{tab.label}</a>
+            ))}
+          </div>
+
+          {/* 紹介条件フィルタ（advisor 専用モードのみ） */}
           {isAdvisorOnly && (
             <div className="bg-white rounded-xl border border-emerald-200 p-4 mb-5">
               <div className="flex items-center justify-between mb-3">
@@ -235,24 +220,20 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                   <a href={buildUrl({ referral: "", dorm: "", foreign: "", female: "", tattoo: "", accident: "", age64: "" })} className="text-xs text-gray-400 hover:text-gray-600">✕ 条件をクリア</a>
                 )}
               </div>
-
-              {/* 契約・環境（ON/OFF） */}
               <div className="flex gap-2 flex-wrap mb-4">
-                <a href={buildUrl({ referral: selectedReferral ? "" : "1" })} className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors border " + (selectedReferral ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-200 hover:border-emerald-400")}>紹介契約あり</a>
-                <a href={buildUrl({ dorm: selectedDorm ? "" : "1" })} className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors border " + (selectedDorm ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-200 hover:border-emerald-400")}>寮あり</a>
+                <a href={buildUrl({ referral: selectedReferral ? "" : "1" })} className={"px-3 py-1.5 rounded-full text-xs font-medium border " + (selectedReferral ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-200 hover:border-emerald-400")}>紹介契約あり</a>
+                <a href={buildUrl({ dorm: selectedDorm ? "" : "1" })} className={"px-3 py-1.5 rounded-full text-xs font-medium border " + (selectedDorm ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-200 hover:border-emerald-400")}>寮あり</a>
               </div>
-
-              {/* 受け入れ可否（未指定 / 可能のみ / 可能＋要相談） */}
               <div className="grid grid-cols-5 gap-3">
-                {REFERRAL_COND_FILTERS.map((f) => {
+                {REFERRAL_COND_FILTERS.map(f => {
                   const cur = condParams[f.param]
                   return (
                     <div key={f.param}>
                       <div className="text-xs text-gray-500 mb-1.5">{f.label}</div>
                       <div className="flex flex-col gap-1">
-                        <a href={buildUrl({ [f.param]: "" })} className={"px-2 py-1 rounded text-xs text-center transition-colors border " + (cur === "" ? "bg-gray-600 text-white border-gray-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400")}>指定なし</a>
-                        <a href={buildUrl({ [f.param]: "ok" })} className={"px-2 py-1 rounded text-xs text-center transition-colors border " + (cur === "ok" ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-500 border-gray-200 hover:border-green-400")}>可能のみ</a>
-                        <a href={buildUrl({ [f.param]: "ok_consult" })} className={"px-2 py-1 rounded text-xs text-center transition-colors border " + (cur === "ok_consult" ? "bg-yellow-500 text-white border-yellow-500" : "bg-white text-gray-500 border-gray-200 hover:border-yellow-400")}>＋要相談</a>
+                        <a href={buildUrl({ [f.param]: "" })} className={"px-2 py-1 rounded text-xs text-center border " + (cur === "" ? "bg-gray-600 text-white border-gray-600" : "bg-white text-gray-500 border-gray-200 hover:border-gray-400")}>指定なし</a>
+                        <a href={buildUrl({ [f.param]: "ok" })} className={"px-2 py-1 rounded text-xs text-center border " + (cur === "ok" ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-500 border-gray-200 hover:border-green-400")}>可能のみ</a>
+                        <a href={buildUrl({ [f.param]: "ok_consult" })} className={"px-2 py-1 rounded text-xs text-center border " + (cur === "ok_consult" ? "bg-yellow-500 text-white border-yellow-500" : "bg-white text-gray-500 border-gray-200 hover:border-yellow-400")}>＋要相談</a>
                       </div>
                     </div>
                   )
@@ -261,35 +242,15 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             </div>
           )}
 
-          {/* ステータス・温度感フィルター */}
-          <div className="flex items-center gap-4 mb-5">
-            <div className="flex gap-2 flex-wrap">
-              {statusTabs.map((tab) => (
-                <a key={tab.key} href={buildUrl({ status: tab.key })} className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " + (selectedStatus === tab.key ? "bg-blue-600 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-blue-400")}>{tab.label}</a>
-              ))}
-            </div>
-            {!isAdvisorOnly && (
-              <>
-                <div className="w-px h-5 bg-gray-200" />
-                <div className="flex gap-2 flex-wrap">
-                  {tempTabs.map((tab) => (
-                    <a key={tab.key} href={buildUrl({ temp: tab.key })} className={"px-3 py-1.5 rounded-full text-xs font-medium transition-colors " + (selectedTemp === tab.key ? "bg-gray-700 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-gray-400")}>{tab.label}</a>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* 件数表示 */}
           <div className="text-xs text-gray-400 mb-3">
-            {companies.length}件表示
+            {rows.length}件表示
+            {!isAdvisorOnly && <span className="ml-2">（対応が必要な企業ほど上に並んでいます）</span>}
             {searchQuery && <span className="ml-2 text-blue-600">「{searchQuery}」の検索結果</span>}
-            {hasReferralFilter && <span className="ml-2 text-emerald-600">紹介条件で絞り込み中</span>}
           </div>
 
-          {companies.length === 0 ? (
+          {rows.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-              <p className="text-gray-400 text-lg mb-2">企業データがありません</p>
+              <p className="text-gray-400 text-lg mb-2">{selectedFocus ? "該当する企業はありません 🎉" : "企業データがありません"}</p>
               <p className="text-gray-400 text-sm">条件を変更するか「企業追加」から登録してください</p>
             </div>
           ) : (
@@ -297,55 +258,73 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">企業ID</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">会社名</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">ステータス</th>
-                    {isAdvisorOnly
-                      ? <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">紹介契約</th>
-                      : <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">温度感</th>}
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">認証</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">担当者</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">応募数</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">入社数</th>
+                    {isAdvisorOnly ? (
+                      <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">紹介契約</th>
+                    ) : (
+                      <>
+                        <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 whitespace-nowrap">直近3か月<br />応募 / 入社</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">次回アクション</th>
+                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">要対応</th>
+                      </>
+                    )}
+                    {(showUserColumn || isAdvisorOnly) && <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">担当者</th>}
+                    <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {companies.map((company) => {
-                    const totalApply = company.monthlyRecords.reduce((sum, r) => sum + (r.applyCount ?? 0), 0)
-                    const totalHire = company.monthlyRecords.reduce((sum, r) => sum + (r.hireCount ?? 0), 0)
-                    return (
-                    <tr key={company.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-500">{company.companyId ?? "-"}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        <a href={"/companies/" + company.id} className="hover:text-blue-600 hover:underline">{company.name}</a>
-                      </td>
+                  {rows.map(r => (
+                    <tr key={r.id} className="group hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_COLORS[company.status] ?? "bg-gray-100 text-gray-600")}>{STATUS_LABELS[company.status] ?? company.status}</span>
+                        <a href={"/companies/" + r.id} className="text-sm font-medium text-gray-900 hover:text-blue-600 hover:underline">{r.name}</a>
+                        <div className="text-[11px] text-gray-400 mt-0.5">
+                          {r.companyId ? "ID " + r.companyId : "ID未登録"}
+                          {r.prefecture !== "不明" && <span className="ml-2">{r.prefecture}</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className={"text-xs px-2 py-1 rounded-full font-medium " + (STATUS_COLORS[r.status] ?? "bg-gray-100 text-gray-600")}>{STATUS_LABELS[r.status] ?? r.status}</span>
                       </td>
                       {isAdvisorOnly ? (
                         <td className="px-4 py-3">
-                          {company.hasReferralContract
+                          {r.hasReferralContract
                             ? <span className="text-xs px-2 py-1 rounded-full font-medium bg-emerald-100 text-emerald-800">あり</span>
                             : <span className="text-xs text-gray-300">なし</span>}
                         </td>
                       ) : (
-                        <td className="px-4 py-3">
-                          {company.temperature
-                            ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_LABELS[company.temperature]?.cls ?? "")}>{TEMP_LABELS[company.temperature]?.label}</span>
-                            : <span className="text-xs text-gray-300">-</span>}
-                        </td>
+                        <>
+                          <td className="px-4 py-3 text-sm text-right tabular-nums whitespace-nowrap">
+                            <span className={r.apply3m > 0 ? "text-gray-900" : "text-gray-300"}>{r.apply3m}</span>
+                            <span className="text-gray-300 mx-1">/</span>
+                            <span className={r.hire3m > 0 ? "text-green-700 font-bold" : "text-gray-300"}>{r.hire3m}</span>
+                          </td>
+                          <td className="px-4 py-3 text-sm max-w-[14rem]">
+                            {r.nextActionDate || r.nextAction ? (
+                              <>
+                                {r.nextActionDate && <span className="text-xs text-gray-500 mr-1.5">{md(r.nextActionDate)}</span>}
+                                <span className="text-gray-700">{r.nextAction ?? ""}</span>
+                              </>
+                            ) : <span className="text-xs text-gray-300">未設定</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {r.flags.map(f => (
+                                <span key={f.key} className={"text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap " + FLAG_COLORS[f.level]}>{f.label}</span>
+                              ))}
+                            </div>
+                          </td>
+                        </>
                       )}
-                      <td className="px-4 py-3 text-sm whitespace-nowrap">
-                        {(company.workplaceCertLevel ?? 0) > 0
-                          ? <span className="text-yellow-500">{certLabel(company.workplaceCertLevel)}</span>
-                          : <span className="text-xs text-gray-300">未取得</span>}
+                      {(showUserColumn || isAdvisorOnly) && <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{r.userName}</td>}
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <a href={"/companies/" + r.id + "/report"} className="text-xs text-blue-600 hover:underline mr-3">レポート</a>
+                          <a href={"/companies/" + r.id} className="text-xs text-blue-600 hover:underline">詳細 →</a>
+                        </span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{company.user.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{totalApply}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{totalHire}</td>
                     </tr>
-                    )
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
