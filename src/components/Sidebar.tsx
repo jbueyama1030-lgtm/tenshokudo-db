@@ -60,6 +60,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
       links: canMarketer ? [
         { href: "/marketing", label: "📊 マーケ分析" },
         { href: "/marketing/trend", label: "📈 月次トレンド" },
+        { href: "/marketing/applicants", label: "👥 応募者の傾向" },
         { href: "/marketing/budget", label: "🎯 かけて良い広告費" },
       ] : [],
     },
