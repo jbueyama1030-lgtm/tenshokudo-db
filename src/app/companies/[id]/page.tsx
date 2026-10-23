@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import ContractPeriods from "@/components/ContractPeriods"
 import ApplicantProfile from "@/components/ApplicantProfile"
 import CompanyGroupChips from "@/components/CompanyGroupChips"
+import { optionsTotal } from "@/lib/contractOptions"
 import { extractPref } from "@/lib/area"
 import { IconBuilding, IconChart, IconChevronRight, IconExternal, IconHome, IconPencil, IconPhone } from "@/components/icons"
 import {
@@ -230,8 +231,8 @@ function periodAnnualRevenue(p: ContractPeriodLite): number {
   const base = (p.monthlyFee ?? 0) * 12
   const discount = Math.round(base * ((p.discountRate ?? 0) / 100))
   const listing = p.revenueOverride != null ? p.revenueOverride : base - discount
-  const opt = (p.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
-  return listing + opt
+  // オプションは月額なら 月額 × 月数（src/lib/contractOptions.ts）
+  return listing + optionsTotal(p.options ?? [])
 }
 
 // その契約期間が今アクティブか

@@ -1,8 +1,9 @@
 // 置き場所: src/components/ContractPeriods.tsx
 "use client"
 import { useEffect, useState } from "react"
+import { optionMonths, optionPeriodLabel, optionTotal, optionsTotal, type ContractOption } from "@/lib/contractOptions"
 
-type Option = { name: string; amount: number }
+type Option = ContractOption
 type Period = {
   id: string
   externalId: string | null
@@ -62,8 +63,7 @@ function annualRevenue(d: { monthlyFee: number | null; discountRate: number | nu
   const base = (d.monthlyFee ?? 0) * 12
   const discount = Math.round(base * ((d.discountRate ?? 0) / 100))
   const listing = d.revenueOverride != null ? d.revenueOverride : base - discount
-  const opt = (d.options ?? []).reduce((s, o) => s + (Number(o.amount) || 0), 0)
-  return listing + opt
+  return listing + optionsTotal(d.options ?? [])
 }
 
 function daysUntil(dateStr: string | null) {
@@ -248,15 +248,39 @@ export default function ContractPeriods({
 
       {/* オプション */}
       <div>
-        <label className="block text-xs text-gray-400 mb-1">オプション（追加広告等）</label>
-        {draft.options.map((op, i) => (
-          <div key={i} className="flex items-center gap-2 mb-1.5">
-            <input value={op.name} onChange={e => { const arr = [...draft.options]; arr[i] = { ...arr[i], name: e.target.value }; setDraft({ ...draft, options: arr }) }} className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm text-gray-900" placeholder="オプション名" />
-            <input type="number" value={op.amount} onChange={e => { const arr = [...draft.options]; arr[i] = { ...arr[i], amount: e.target.value === "" ? 0 : Number(e.target.value) }; setDraft({ ...draft, options: arr }) }} className="w-32 border border-gray-200 rounded px-2 py-1 text-sm text-right text-gray-900" placeholder="金額" />
-            <button type="button" onClick={() => setDraft({ ...draft, options: draft.options.filter((_, j) => j !== i) })} className="text-red-400 text-xs hover:text-red-600">削除</button>
+        <label className="block text-xs text-gray-400 mb-1">オプション（追加広告・注目の5社など）</label>
+        {draft.options.length > 0 && (
+          <div className="grid grid-cols-[1fr_6rem_7.5rem_8.5rem_8.5rem_6rem_2.5rem] gap-2 text-[11px] text-gray-400 mb-1 px-0.5">
+            <span>オプション名</span><span>請求</span><span>金額（税込）</span><span>開始日</span><span>終了日</span><span className="text-right">合計</span><span></span>
           </div>
-        ))}
-        <button type="button" onClick={() => setDraft({ ...draft, options: [...draft.options, { name: "", amount: 0 }] })} className="text-xs text-blue-600 hover:underline">＋ オプション追加</button>
+        )}
+        {draft.options.map((op, i) => {
+          const set = (patch: Partial<Option>) => {
+            const arr = [...draft.options]
+            arr[i] = { ...arr[i], ...patch }
+            setDraft({ ...draft, options: arr })
+          }
+          return (
+            <div key={i} className="grid grid-cols-[1fr_6rem_7.5rem_8.5rem_8.5rem_6rem_2.5rem] gap-2 items-center mb-1.5">
+              <input value={op.name} onChange={e => set({ name: e.target.value })} className="border border-gray-200 rounded px-2 py-1 text-sm text-gray-900" placeholder="例: 注目の5社" />
+              <select value={op.billing ?? "once"} onChange={e => set({ billing: e.target.value as Option["billing"] })} className="border border-gray-200 rounded px-1.5 py-1 text-sm text-gray-900">
+                <option value="once">一括</option>
+                <option value="monthly">月額</option>
+              </select>
+              <input type="number" value={op.amount} onChange={e => set({ amount: e.target.value === "" ? 0 : Number(e.target.value) })} className="border border-gray-200 rounded px-2 py-1 text-sm text-right text-gray-900" placeholder={op.billing === "monthly" ? "月額" : "総額"} />
+              <input type="date" value={op.start ?? ""} onChange={e => set({ start: e.target.value || null })} className="border border-gray-200 rounded px-1.5 py-1 text-sm text-gray-900" />
+              <input type="date" value={op.end ?? ""} onChange={e => set({ end: e.target.value || null })} className="border border-gray-200 rounded px-1.5 py-1 text-sm text-gray-900" />
+              <span className="text-right text-xs text-gray-600 tabular-nums" title={op.billing === "monthly" ? `月額 × ${optionMonths(op)}か月` : "一括"}>
+                ¥{fmt(optionTotal(op))}
+              </span>
+              <button type="button" onClick={() => setDraft({ ...draft, options: draft.options.filter((_, j) => j !== i) })} className="text-red-400 text-xs hover:text-red-600">削除</button>
+            </div>
+          )
+        })}
+        <button type="button" onClick={() => setDraft({ ...draft, options: [...draft.options, { name: "", amount: 0, billing: "once", start: draft.contractStart || null, end: null }] })} className="text-xs text-blue-600 hover:underline">＋ オプション追加</button>
+        {draft.options.some(o => o.billing === "monthly" && (!o.start || !o.end)) && (
+          <p className="text-[11px] text-amber-700 mt-1">月額で開始日・終了日のどちらかが空のものは、12か月分で計算しています。</p>
+        )}
       </div>
 
       <div>
@@ -351,10 +375,25 @@ export default function ContractPeriods({
                       </div>
                     </div>
                     {(p.options ?? []).length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {(p.options ?? []).map((op, i) => (
-                          <span key={i} className="text-xs bg-white border border-gray-200 rounded-full px-2 py-0.5 text-gray-600">{op.name} ¥{fmt(op.amount)}</span>
-                        ))}
+                      <div className="mt-3 border-t border-black/5 pt-2 space-y-1">
+                        <div className="text-[11px] text-gray-400">オプション</div>
+                        {(p.options ?? []).map((op, i) => {
+                          const period = optionPeriodLabel(op)
+                          const now = new Date().toISOString().slice(0, 10)
+                          const running = (!op.start || op.start <= now) && (!op.end || op.end >= now)
+                          return (
+                            <div key={i} className="flex items-center gap-2 text-xs text-gray-700">
+                              <span className={"w-1.5 h-1.5 rounded-full " + (running ? "bg-green-500" : "bg-gray-300")} title={running ? "期間中" : "期間外"} />
+                              <span className="font-medium">{op.name || "（名前なし）"}</span>
+                              {period && <span className="text-gray-400">{period}</span>}
+                              <span className="ml-auto tabular-nums">
+                                {op.billing === "monthly"
+                                  ? <>¥{fmt(op.amount)}/月 × {optionMonths(op)}か月 = <span className="font-medium">¥{fmt(optionTotal(op))}</span></>
+                                  : <span className="font-medium">¥{fmt(optionTotal(op))}</span>}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                     {p.contractNote && <div className="mt-2 text-xs text-gray-500 whitespace-pre-wrap">{p.contractNote}</div>}

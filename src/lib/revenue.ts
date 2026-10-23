@@ -3,10 +3,10 @@
 // annualBase = monthlyFee × 12
 // discountAmt = annualBase × (discountRate / 100)
 // listing = revenueOverride があればそれ、なければ annualBase − discountAmt
-// optionTotal = options[].amount の合計
+// optionTotal = オプションの合計（月額のものは 月額 × 月数。src/lib/contractOptions.ts）
 // 年間売上 = listing + optionTotal
 
-type OptionLike = { name?: string; amount?: number | string | null }
+import { optionsTotal } from "@/lib/contractOptions"
 
 type RevenueSource = {
   monthlyFee?: number | null
@@ -38,13 +38,7 @@ export function annualRevenueBreakdown(company: RevenueSource): {
   const discountAmt = Math.round(annualBase * ((company.discountRate ?? 0) / 100))
   const listing = company.revenueOverride != null ? company.revenueOverride : annualBase - discountAmt
 
-  let option = 0
-  if (Array.isArray(company.options)) {
-    for (const o of company.options as OptionLike[]) {
-      const amt = Number(o?.amount)
-      if (Number.isFinite(amt)) option += amt
-    }
-  }
+  const option = optionsTotal(company.options)
 
   return { listing, option, total: listing + option }
 }
