@@ -15,8 +15,11 @@ const NO_APPLY_DAYS = 30
 const STALE_ARTICLE_DAYS = 180
 /** 次回アクションが何日以内なら「もうすぐ」とするか */
 const ACTION_SOON_DAYS = 3
+/** 何日以内の応募の「企業未開封」を数えるか */
+const UNOPENED_DAYS = 30
 
 export type FocusKey =
+  | "unopened"
   | "action_overdue"
   | "renewal"
   | "no_apply"
@@ -29,6 +32,7 @@ export type Flag = { key: FocusKey; label: string; level: "red" | "yellow" | "gr
 
 export const FOCUS_OPTIONS: { key: FocusKey | "attention"; label: string }[] = [
   { key: "attention", label: "要対応すべて" },
+  { key: "unopened", label: "応募が未開封" },
   { key: "action_overdue", label: "次回アクション超過" },
   { key: "renewal", label: "更新が近い" },
   { key: "no_apply", label: "応募が止まっている" },
@@ -51,6 +55,8 @@ export type CompanyRow = {
   workplaceCertLevel: number
   apply3m: number
   hire3m: number
+  /** 直近30日の応募のうち、企業がまだ開封していない件数 */
+  unopened: number
   lastAppliedAt: string | null
   nextAction: string | null
   nextActionDate: string | null
@@ -116,10 +122,12 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
 
   // 直近3か月（今月＋前2か月）の応募・入社と、最後の応募日
   const fromKey = ymKey(addMonths(currentYmJst(), -2))
-  const stats = await prisma.$queryRaw<{ companyRef: string; apply3m: number; hire3m: number; lastApplied: Date | null }[]>`
+  const unopenedSince = new Date(Date.now() - UNOPENED_DAYS * 86400000)
+  const stats = await prisma.$queryRaw<{ companyRef: string; apply3m: number; hire3m: number; unopened: number; lastApplied: Date | null }[]>`
     SELECT "companyRef",
            COUNT(*) FILTER (WHERE ("year" * 100 + "month") >= ${fromKey})::int AS apply3m,
            COUNT(*) FILTER (WHERE ("year" * 100 + "month") >= ${fromKey} AND "status" = '入社')::int AS hire3m,
+           COUNT(*) FILTER (WHERE "companyOpened" = false AND "appliedAt" >= ${unopenedSince})::int AS unopened,
            MAX("appliedAt") AS "lastApplied"
     FROM "ApplicationRecord"
     WHERE "companyRef" IS NOT NULL
@@ -134,6 +142,12 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
     const st = statById.get(c.id)
     const flags: Flag[] = []
     const contracted = c.status === "contracted"
+
+    // 企業が応募を開封していない（直近30日）
+    const unopened = st ? Number(st.unopened) : 0
+    if (unopened > 0) {
+      flags.push({ key: "unopened", label: `未開封の応募 ${unopened}件`, level: "red", score: 85 })
+    }
 
     // 次回アクション
     if (c.nextActionDate) {
@@ -205,6 +219,7 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       workplaceCertLevel: c.workplaceCertLevel ?? 0,
       apply3m: st ? Number(st.apply3m) : 0,
       hire3m: st ? Number(st.hire3m) : 0,
+      unopened: st ? Number(st.unopened) : 0,
       lastAppliedAt: st?.lastApplied ? new Date(st.lastApplied).toISOString() : null,
       nextAction: c.nextAction,
       nextActionDate: c.nextActionDate ? c.nextActionDate.toISOString() : null,

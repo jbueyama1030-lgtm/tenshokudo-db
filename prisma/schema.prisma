@@ -246,6 +246,13 @@ model ApplicationRecord {
   // ソルト付きSHA-256。電話番号そのものは保存しない（復元不可）。
   phoneHash   String?
 
+  // ===== 応募者の属性（集計用。氏名・生年月日・住所そのものは保存しない） =====
+  age            Int?      // 応募時点の年齢（CSVの「年齢」）
+  gender         String?   // "男性" / "女性"（CSVの「性別」）
+  hasLicense2    Boolean?  // 二種免許（CSVの「二種」: 有り=true / 無し=false / 空=null）
+  companyOpened  Boolean?  // 企業が応募を開封したか（CSVの「企業開封」）
+  applicantPref  String?   // 応募者の都道府県（CSVの「住所」から都道府県だけ取り出す）
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -255,6 +262,7 @@ model ApplicationRecord {
   @@index([sourceCompanyId])
   @@index([entryType])
   @@index([phoneHash])
+  @@index([companyOpened])
 }
 
 model AdCost {

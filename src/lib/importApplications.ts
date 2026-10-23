@@ -1,5 +1,7 @@
+// 置き場所: src/lib/importApplications.ts
 import { PrismaClient } from "@prisma/client"
 import { createHash } from "crypto"
+import { extractPref, UNKNOWN_PREF } from "@/lib/area"
 
 /**
  * 応募明細CSVの取り込み。
@@ -12,7 +14,11 @@ import { createHash } from "crypto"
  * 【個人情報】
  * 電話番号は保存しない。ソルト付きSHA-256のハッシュのみ保存し、
  * UU（実人数）の名寄せにだけ使う。ハッシュから電話番号は復元できない。
- * ソルトは環境変数 PHONE_HASH_SALT。**変更すると過去のハッシュと突合できなくなる**。
+ * ソルトは環境変数 PHONE_HASH_SALT。毎回全期間を洗い替えるので、変更しても次の取り込みで全件作り直される。
+ *
+ * 応募者の属性は集計に必要な最小限だけ保存する：
+ * 年齢（数字）・性別・二種の有無・企業開封の有無・都道府県（住所から都道府県だけ）。
+ * 氏名・生年月日・住所そのもの・メールアドレス・志望動機・メモは保存しない。
  *
  * 【安全装置】
  * 取り込み後の件数が既存より大幅に減る場合は中断する。
@@ -33,6 +39,7 @@ export type ImportResult = {
   unmatched: number
   deleted: number
   hashed: number      // 電話番号ハッシュを付与できた件数
+  withAge: number     // 年齢を取り込めた件数
   aborted?: string    // 中断した場合の理由
 }
 
@@ -119,6 +126,40 @@ export function hashPhone(raw: string): string | null {
   return createHash("sha256").update(digits + salt).digest("hex")
 }
 
+/** 年齢: 数字だけ取り出し、15〜100歳の範囲外は null */
+export function parseAge(raw: string): number | null {
+  if (!raw) return null
+  const s = String(raw).replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xfee0)).replace(/\D/g, "")
+  if (!s) return null
+  const n = Number(s)
+  return n >= 15 && n <= 100 ? n : null
+}
+
+/** 性別: 男性／女性のみ。それ以外は null */
+export function parseGender(raw: string): string | null {
+  const s = (raw ?? "").trim()
+  if (s.startsWith("男")) return "男性"
+  if (s.startsWith("女")) return "女性"
+  return null
+}
+
+/** 二種: 有り=true / 無し=false / それ以外=null */
+export function parseLicense2(raw: string): boolean | null {
+  const s = (raw ?? "").trim()
+  if (!s) return null
+  if (s.includes("有")) return true
+  if (s.includes("無")) return false
+  return null
+}
+
+/** 企業開封: 開封済=true / 未開封=false / それ以外=null */
+export function parseOpened(raw: string): boolean | null {
+  const s = (raw ?? "").trim()
+  if (s === "開封済") return true
+  if (s === "未開封") return false
+  return null
+}
+
 type Parsed = {
   sourceCompanyId: string
   appliedAt: Date
@@ -126,6 +167,11 @@ type Parsed = {
   inflow: string
   entryType: string | null
   phoneHash: string | null
+  age: number | null
+  gender: string | null
+  hasLicense2: boolean | null
+  companyOpened: boolean | null
+  applicantPref: string | null
   companyRef: string | null
   year: number
   month: number
@@ -141,7 +187,7 @@ export async function importApplicationsCsv(
   options: { skipGuard?: boolean } = {}
 ): Promise<ImportResult> {
   const results: ImportResult = {
-    success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0, deleted: 0, hashed: 0,
+    success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0, deleted: 0, hashed: 0, withAge: 0,
   }
 
   const parsedCsv = parseCsv(csvText)
@@ -157,6 +203,12 @@ export async function importApplicationsCsv(
   // 種別・電話番号は無くても取り込めるようにする（旧CSVとの互換）
   const iEntryType = header.indexOf("種別")
   const iPhone = header.indexOf("電話番号")
+  // 応募者の属性（無くても取り込める）
+  const iAge = header.indexOf("年齢")
+  const iGender = header.indexOf("性別")
+  const iLicense2 = header.indexOf("二種")
+  const iOpened = header.indexOf("企業開封")
+  const iAddress = header.indexOf("住所")
 
   if (iDate < 0 || iCompanyId < 0 || iStatus < 0 || iInflow < 0) {
     return { ...results, aborted: "必要な列（応募日 / 企業ID / ステータス / 流入）が見つかりません" }
@@ -182,6 +234,12 @@ export async function importApplicationsCsv(
     const entryType = iEntryType >= 0 ? ((r[iEntryType] ?? "").trim() || null) : null
     const phoneHash = iPhone >= 0 ? hashPhone((r[iPhone] ?? "").trim()) : null
     const appliedAt = parseAppliedAt(rawDate)
+    const age = iAge >= 0 ? parseAge(r[iAge] ?? "") : null
+    const gender = iGender >= 0 ? parseGender(r[iGender] ?? "") : null
+    const hasLicense2 = iLicense2 >= 0 ? parseLicense2(r[iLicense2] ?? "") : null
+    const companyOpened = iOpened >= 0 ? parseOpened(r[iOpened] ?? "") : null
+    const pref = iAddress >= 0 ? extractPref(r[iAddress] ?? "") : UNKNOWN_PREF
+    const applicantPref = pref === UNKNOWN_PREF ? null : pref
 
     if (!rawDate || !sourceCompanyId || !appliedAt) { results.skip++; continue }
 
@@ -192,8 +250,13 @@ export async function importApplicationsCsv(
     const companyRef = companyMap[sourceCompanyId] ?? null
     if (!companyRef) results.unmatched++
     if (phoneHash) results.hashed++
+    if (age != null) results.withAge++
 
-    parsed.push({ sourceCompanyId, appliedAt, status, inflow, entryType, phoneHash, companyRef, year, month })
+    parsed.push({
+      sourceCompanyId, appliedAt, status, inflow, entryType, phoneHash,
+      age, gender, hasLicense2, companyOpened, applicantPref,
+      companyRef, year, month,
+    })
   }
 
   if (parsed.length === 0) {
@@ -251,6 +314,11 @@ export async function importApplicationsCsv(
           inflow: p.inflow,
           entryType: p.entryType,
           phoneHash: p.phoneHash,
+          age: p.age,
+          gender: p.gender,
+          hasLicense2: p.hasLicense2,
+          companyOpened: p.companyOpened,
+          applicantPref: p.applicantPref,
         })),
         skipDuplicates: true,
       })

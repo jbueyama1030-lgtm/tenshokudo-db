@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import ContractPeriods from "@/components/ContractPeriods"
+import ApplicantProfile from "@/components/ApplicantProfile"
 import { extractPref } from "@/lib/area"
 import { IconBuilding, IconChart, IconChevronRight, IconExternal, IconHome, IconPencil, IconPhone } from "@/components/icons"
 import {
@@ -1089,6 +1090,8 @@ export default function CompanyDetailPage() {
 
               {tab === "results" && (
                 <>
+                  <ApplicantProfile companyId={company.id} />
+
           {/* 転職道実績 */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">転職道実績（累計）</h2>
