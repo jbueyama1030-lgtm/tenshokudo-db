@@ -249,11 +249,6 @@ export default function ContractPeriods({
       {/* オプション */}
       <div>
         <label className="block text-xs text-gray-400 mb-1">オプション（追加広告・注目の5社など）</label>
-        {draft.options.length > 0 && (
-          <div className="grid grid-cols-[1fr_6rem_7.5rem_8.5rem_8.5rem_6rem_2.5rem] gap-2 text-[11px] text-gray-400 mb-1 px-0.5">
-            <span>オプション名</span><span>請求</span><span>金額（税込）</span><span>開始日</span><span>終了日</span><span className="text-right">合計</span><span></span>
-          </div>
-        )}
         {draft.options.map((op, i) => {
           const set = (patch: Partial<Option>) => {
             const arr = [...draft.options]
@@ -261,19 +256,46 @@ export default function ContractPeriods({
             setDraft({ ...draft, options: arr })
           }
           return (
-            <div key={i} className="grid grid-cols-[1fr_6rem_7.5rem_8.5rem_8.5rem_6rem_2.5rem] gap-2 items-center mb-1.5">
-              <input value={op.name} onChange={e => set({ name: e.target.value })} className="border border-gray-200 rounded px-2 py-1 text-sm text-gray-900" placeholder="例: 注目の5社" />
-              <select value={op.billing ?? "once"} onChange={e => set({ billing: e.target.value as Option["billing"] })} className="border border-gray-200 rounded px-1.5 py-1 text-sm text-gray-900">
-                <option value="once">一括</option>
-                <option value="monthly">月額</option>
-              </select>
-              <input type="number" value={op.amount} onChange={e => set({ amount: e.target.value === "" ? 0 : Number(e.target.value) })} className="border border-gray-200 rounded px-2 py-1 text-sm text-right text-gray-900" placeholder={op.billing === "monthly" ? "月額" : "総額"} />
-              <input type="date" value={op.start ?? ""} onChange={e => set({ start: e.target.value || null })} className="border border-gray-200 rounded px-1.5 py-1 text-sm text-gray-900" />
-              <input type="date" value={op.end ?? ""} onChange={e => set({ end: e.target.value || null })} className="border border-gray-200 rounded px-1.5 py-1 text-sm text-gray-900" />
-              <span className="text-right text-xs text-gray-600 tabular-nums" title={op.billing === "monthly" ? `月額 × ${optionMonths(op)}か月` : "一括"}>
-                ¥{fmt(optionTotal(op))}
-              </span>
-              <button type="button" onClick={() => setDraft({ ...draft, options: draft.options.filter((_, j) => j !== i) })} className="text-red-400 text-xs hover:text-red-600">削除</button>
+            <div key={i} className="bg-white border border-gray-200 rounded-lg p-3 mb-2 space-y-2">
+              {/* 1段目: 名前・請求・金額 */}
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[10rem]">
+                  <div className="text-[11px] text-gray-400 mb-0.5">オプション名</div>
+                  <input value={op.name} onChange={e => set({ name: e.target.value })} className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-gray-900" placeholder="例: 注目の5社" />
+                </div>
+                <div className="w-24">
+                  <div className="text-[11px] text-gray-400 mb-0.5">請求</div>
+                  <select value={op.billing ?? "once"} onChange={e => set({ billing: e.target.value as Option["billing"] })} className="w-full border border-gray-200 rounded px-1.5 py-1.5 text-sm text-gray-900">
+                    <option value="once">一括</option>
+                    <option value="monthly">月額</option>
+                  </select>
+                </div>
+                <div className="w-36">
+                  <div className="text-[11px] text-gray-400 mb-0.5">{op.billing === "monthly" ? "月額（税込）" : "総額（税込）"}</div>
+                  <input type="number" value={op.amount} onChange={e => set({ amount: e.target.value === "" ? 0 : Number(e.target.value) })} className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm text-right text-gray-900" placeholder="円" />
+                </div>
+              </div>
+              {/* 2段目: 期間・合計・削除 */}
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-40">
+                  <div className="text-[11px] text-gray-400 mb-0.5">開始日</div>
+                  <input type="date" value={op.start ?? ""} onChange={e => set({ start: e.target.value || null })} className="w-full border border-gray-200 rounded px-1.5 py-1.5 text-sm text-gray-900" />
+                </div>
+                <span className="text-gray-400 pb-2">〜</span>
+                <div className="w-40">
+                  <div className="text-[11px] text-gray-400 mb-0.5">終了日</div>
+                  <input type="date" value={op.end ?? ""} onChange={e => set({ end: e.target.value || null })} className="w-full border border-gray-200 rounded px-1.5 py-1.5 text-sm text-gray-900" />
+                </div>
+                <div className="flex-1" />
+                <div className="text-right pb-1.5">
+                  <div className="text-[11px] text-gray-400">合計</div>
+                  <div className="text-sm font-bold text-gray-900 tabular-nums">
+                    ¥{fmt(optionTotal(op))}
+                    {op.billing === "monthly" && <span className="ml-1 text-[11px] font-normal text-gray-500">（{optionMonths(op)}か月）</span>}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setDraft({ ...draft, options: draft.options.filter((_, j) => j !== i) })} className="text-xs text-red-500 hover:text-red-700 pb-2 pl-2">削除</button>
+              </div>
             </div>
           )
         })}
