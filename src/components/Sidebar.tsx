@@ -51,6 +51,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
       links: [
         { href: "/dashboard", label: "📊 ダッシュボード" },
         { href: "/companies", label: "🏢 企業一覧" },
+        ...(!isAgency && (canSales || canProduction || canMarketer) ? [{ href: "/groups", label: "🏷 グループ・タグ" }] : []),
         ...(canSales ? [{ href: "/companies/new", label: "➕ 企業追加" }] : []),
         ...(canProduction ? [{ href: "/production", label: "🎨 制作ダッシュボード" }] : []),
       ],

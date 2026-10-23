@@ -143,10 +143,41 @@ model Company {
   // 転職道の掲載記事（管理画面の記事CSVから取り込み。1社1記事）
   jobArticle JobArticle?
 
+  // 法人グループ（同じ会社・資本の営業所をまとめる。1社につき1つまで）
+  corporateGroupId String?
+  corporateGroup   CompanyGroup? @relation("CorporateGroup", fields: [corporateGroupId], references: [id])
+  // 自由なタグ（「要対策企業」など。1社に複数付けられる）
+  tags CompanyGroup[] @relation("CompanyTags")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([agencyId])
+  @@index([corporateGroupId])
+}
+
+// =====================================================================
+// 企業のグループ・タグ（社内向け。代理店ユーザーには見せない）
+// kind = "corporate"（法人グループ。Company.corporateGroupId で所属）
+//      / "tag"（自由なタグ。Company.tags で多対多）
+// =====================================================================
+model CompanyGroup {
+  id            String   @id @default(cuid())
+  name          String
+  kind          String   @default("corporate")
+  // タグの色（red / amber / green / blue / purple / gray）
+  color         String?
+  note          String?  @db.Text
+  // 転職道の記事CSVの「企業グループID」から自動作成したときの元ID
+  sourceGroupId String?  @unique
+
+  members         Company[] @relation("CorporateGroup")
+  taggedCompanies Company[] @relation("CompanyTags")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind])
 }
 
 model MonthlyRecord {

@@ -18,6 +18,11 @@ type Stats = {
   hired: number
 }
 type Period = Stats & { label: string }
+type Segment = { label: string; total: number; hired: number }
+type SegmentSet = { age: Segment[]; license: Segment[]; total: number; hired: number }
+type SegData = { target: SegmentSet; baseline: SegmentSet; filtered: boolean; months: number }
+/** 入社率の比較で、応募がこれ未満の行は薄く表示（入社は件数が少なく、率がぶれやすいため） */
+const MIN_SEG_SAMPLES = 30
 type Group = Stats & { key: string }
 
 const BAND_LABELS = ["〜20代", "30代", "40代", "50代", "60代", "70代〜"]
@@ -52,7 +57,8 @@ type SortKey = "key" | "total" | "avgAge" | "older" | "female" | "lic" | "unopen
 /** 転職道全体の応募者の傾向（推移・流入元／エリア別の比較） */
 export default function ApplicantTrendPage() {
   const [userName, setUserName] = useState("")
-  const [view, setView] = useState<"trend" | "compare">("trend")
+  const [view, setView] = useState<"trend" | "compare" | "segments">("trend")
+  const [seg, setSeg] = useState<SegData | null>(null)
   const [unit, setUnit] = useState<"quarter" | "month">("quarter")
   const [groupBy, setGroupBy] = useState<"inflow" | "pref">("inflow")
   const [months, setMonths] = useState(12)
@@ -87,6 +93,7 @@ export default function ApplicantTrendPage() {
       if (!r.ok || !d) { setErr(d?.error ?? "読み込めませんでした"); return }
       setOptions(d.options)
       if (d.view === "trend") setPeriods(d.periods)
+      else if (d.view === "segments") setSeg(d)
       else setGroups(d.groups)
     })
   }, [view, unit, groupBy, months, excludeTel, inflow, pref, prefMode])
@@ -146,6 +153,7 @@ export default function ApplicantTrendPage() {
             {[
               { key: "trend", label: "推移を見る" },
               { key: "compare", label: "流入元・エリアで比べる" },
+              { key: "segments", label: "年代・二種で入社率を見る" },
             ].map(t => (
               <button key={t.key} type="button" onClick={() => setView(t.key as typeof view)}
                 className={"px-4 py-2.5 text-sm -mb-px border-b-2 " + (view === t.key ? "border-blue-600 text-blue-600 font-medium" : "border-transparent text-gray-500 hover:text-gray-700")}>
@@ -195,6 +203,13 @@ export default function ApplicantTrendPage() {
                     </button>
                   ))}
                 </div>
+              ) : view === "segments" ? (
+                <>
+                  <select value={months} onChange={e => setMonths(Number(e.target.value))} className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700 bg-white">
+                    {[3, 6, 12, 24, 36].map(m => <option key={m} value={m}>直近{m}か月</option>)}
+                  </select>
+                  <span className="text-xs text-gray-400">上の流入元・エリアで絞り込むと、全体平均との差が出ます</span>
+                </>
               ) : (
                 <>
                   <div className="flex gap-1">
@@ -304,6 +319,73 @@ export default function ApplicantTrendPage() {
                 </div>
               </>
             )
+          )}
+
+          {/* ===== 年代・二種の入社率 ===== */}
+          {!loading && view === "segments" && seg && (
+            <div className="grid grid-cols-2 gap-5">
+              {([
+                { title: "年代別の入社率", key: "age" as const },
+                { title: "二種免許の有無別の入社率", key: "license" as const },
+              ]).map(block => {
+                const rows = seg.target[block.key]
+                const base = seg.baseline[block.key]
+                const maxRate = Math.max(0.0001, ...rows.map(r => (r.total > 0 ? r.hired / r.total : 0)), ...base.map(r => (r.total > 0 ? r.hired / r.total : 0)))
+                return (
+                  <div key={block.key} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                    <h2 className="text-sm font-semibold text-gray-700 mb-1">{block.title}</h2>
+                    <p className="text-xs text-gray-400 mb-3">
+                      {filterLabel ? filterLabel + " の応募" : "全体の応募"}（直近{seg.months}か月・{seg.target.total.toLocaleString()}件、入社率 {pct(seg.target.hired, seg.target.total, 1)}）
+                    </p>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200 text-xs text-gray-500">
+                          <th className="text-left py-2 font-medium">区分</th>
+                          <th className="text-right py-2 font-medium">応募</th>
+                          <th className="text-right py-2 font-medium">入社</th>
+                          <th className="text-left py-2 pl-3 font-medium w-[40%]">入社率</th>
+                          {seg.filtered && <th className="text-right py-2 font-medium">全体平均</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {rows.map((r, i) => {
+                          const rate = r.total > 0 ? r.hired / r.total : null
+                          const b = base[i]
+                          const bRate = b && b.total > 0 ? b.hired / b.total : null
+                          const diff = rate != null && bRate != null ? (rate - bRate) * 100 : null
+                          return (
+                            <tr key={r.label} className={r.total < MIN_SEG_SAMPLES ? "text-gray-400" : ""}>
+                              <td className="py-2">{r.label}</td>
+                              <td className="py-2 text-right tabular-nums">{r.total.toLocaleString()}</td>
+                              <td className="py-2 text-right tabular-nums">{r.hired}</td>
+                              <td className="py-2 pl-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-2 bg-gray-100 rounded">
+                                    <div className="h-2 bg-green-500 rounded" style={{ width: rate != null ? (rate / maxRate) * 100 + "%" : "0%" }} />
+                                  </div>
+                                  <span className="tabular-nums text-xs w-12 text-right">{pct(r.hired, r.total, 1)}</span>
+                                </div>
+                              </td>
+                              {seg.filtered && (
+                                <td className="py-2 text-right tabular-nums text-xs">
+                                  {pct(b?.hired ?? 0, b?.total ?? 0, 1)}
+                                  {diff != null && Math.abs(diff) >= 0.05 && (
+                                    <span className={"ml-1 " + (diff > 0 ? "text-emerald-600" : "text-rose-600")}>{diff > 0 ? "▲" : "▼"}{Math.abs(diff).toFixed(1)}</span>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
+              <p className="col-span-2 text-[11px] text-gray-400">
+                入社率＝入社 ÷ 応募。応募が{MIN_SEG_SAMPLES}件未満の行は灰色にしています（入社は件数が少ないため、率がぶれやすい）。直近の月には選考中の応募が含まれるため、入社率は低めに出ます。
+              </p>
+            </div>
           )}
 
           {/* ===== 比較 ===== */}

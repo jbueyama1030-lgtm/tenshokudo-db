@@ -91,6 +91,8 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     q: "",
     focus: "",
     extraWhere: isAdvisorOnly ? referralWhere : undefined,
+    // 法人グループ・タグは社内向け（代理店ユーザーには出さない）
+    withGroups: !myAgencyId,
   })
 
   // URL（担当者・紹介条件）を組み立てる

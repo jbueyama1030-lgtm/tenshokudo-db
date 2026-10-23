@@ -1,9 +1,12 @@
 // 置き場所: src/app/api/companies/[id]/applicants/route.ts
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { isInAgencyScope } from "@/lib/permissions"
 import { addMonths, currentYmJst, ymKey } from "@/lib/funnelAnalysis"
+import { extractPref, PREFECTURES, UNKNOWN_PREF } from "@/lib/area"
+import { segmentCounts } from "@/lib/segments"
 
 const AGE_BANDS = [
   { key: "~29", label: "〜20代", min: 0, max: 29 },
@@ -24,7 +27,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const company = await prisma.company.findUnique({ where: { id }, select: { id: true, agencyId: true } })
+  const company = await prisma.company.findUnique({ where: { id }, select: { id: true, agencyId: true, address: true } })
   if (!company || !isInAgencyScope(session, company.agencyId)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
@@ -61,7 +64,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const prefs = [...prefCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([pref, count]) => ({ pref, count }))
   const withPref = [...prefCount.values()].reduce((s, v) => s + v, 0)
 
+  // 年代別・二種別の入社率（御社）と、同じ都道府県の他社合計（エリア平均）
+  const fromSql = Prisma.sql`FROM "ApplicationRecord" a LEFT JOIN "Company" c ON c."id" = a."companyRef"`
+  const periodSql = Prisma.sql`(a."year" * 100 + a."month") >= ${fromKey}`
+  const pref = extractPref(company.address)
+  const prefRegex = "(" + PREFECTURES.join("|") + ")"
+  const [segTarget, segArea] = await Promise.all([
+    segmentCounts(fromSql, Prisma.sql`a."companyRef" = ${company.id} AND ${periodSql}`),
+    pref === UNKNOWN_PREF
+      ? Promise.resolve(null)
+      : segmentCounts(fromSql, Prisma.sql`substring(c."address" from ${prefRegex}) = ${pref} AND a."companyRef" <> ${company.id} AND ${periodSql}`),
+  ])
+
   return NextResponse.json({
+    segments: { target: segTarget, area: segArea, areaLabel: pref === UNKNOWN_PREF ? null : pref + "平均" },
     months,
     total,
     ages, withAge,

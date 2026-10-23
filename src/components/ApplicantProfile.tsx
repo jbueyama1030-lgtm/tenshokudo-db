@@ -2,7 +2,10 @@
 "use client"
 import { useEffect, useState } from "react"
 
+type Segment = { label: string; total: number; hired: number }
+type SegmentSet = { age: Segment[]; license: Segment[]; total: number; hired: number }
 type Data = {
+  segments: { target: SegmentSet; area: SegmentSet | null; areaLabel: string | null }
   months: number
   total: number
   ages: { key: string; label: string; count: number; hired: number }[]
@@ -131,7 +134,55 @@ export default function ApplicantProfile({ companyId }: { companyId: string }) {
               </div>
             </div>
           </div>
-          <p className="text-[11px] text-gray-400 mt-4">応募 {data.total}件の集計です。個人は特定できない形で表示しています。</p>
+          {/* 年代別・二種別の入社率 */}
+          <div className="grid grid-cols-2 gap-6 mt-6 pt-5 border-t border-gray-100">
+            {([
+              { title: "年代別の入社率", key: "age" as const },
+              { title: "二種免許の有無別の入社率", key: "license" as const },
+            ]).map(block => (
+              <div key={block.key}>
+                <div className="text-xs text-gray-500 mb-2">{block.title}</div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[11px] text-gray-400 border-b border-gray-100">
+                      <th className="text-left py-1 font-normal">区分</th>
+                      <th className="text-right py-1 font-normal">応募</th>
+                      <th className="text-right py-1 font-normal">入社</th>
+                      <th className="text-right py-1 font-normal">入社率</th>
+                      {data.segments.area && <th className="text-right py-1 font-normal">{data.segments.areaLabel}</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.segments.target[block.key].map((r, i) => {
+                      const a = data.segments.area?.[block.key][i]
+                      if (r.total === 0 && (!a || a.total === 0)) return null
+                      const rate = r.total > 0 ? r.hired / r.total : null
+                      const aRate = a && a.total > 0 ? a.hired / a.total : null
+                      const diff = rate != null && aRate != null && r.total >= 5 ? (rate - aRate) * 100 : null
+                      return (
+                        <tr key={r.label} className={r.total < 5 ? "text-gray-400" : ""}>
+                          <td className="py-1">{r.label}</td>
+                          <td className="py-1 text-right tabular-nums">{r.total}</td>
+                          <td className="py-1 text-right tabular-nums">{r.hired}</td>
+                          <td className="py-1 text-right tabular-nums font-medium">{pct(r.hired, r.total)}</td>
+                          {data.segments.area && (
+                            <td className="py-1 text-right tabular-nums text-xs text-gray-500">
+                              {a ? pct(a.hired, a.total) : "—"}
+                              {diff != null && Math.abs(diff) >= 0.5 && (
+                                <span className={"ml-1 " + (diff > 0 ? "text-emerald-600" : "text-rose-600")}>{diff > 0 ? "▲" : "▼"}</span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-[11px] text-gray-400 mt-4">応募 {data.total}件の集計です。個人は特定できない形で表示しています。応募5件未満の行は灰色にしています（率がぶれやすいため）。</p>
         </>
       )}
     </div>

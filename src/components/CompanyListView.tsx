@@ -26,6 +26,14 @@ const STATUS_DOT: Record<string, string> = {
   approaching: "bg-blue-500",
   delisted: "bg-gray-400",
 }
+const TAG_CHIP: Record<string, string> = {
+  red: "bg-red-100 text-red-700",
+  amber: "bg-amber-100 text-amber-800",
+  green: "bg-green-100 text-green-700",
+  blue: "bg-blue-100 text-blue-700",
+  purple: "bg-purple-100 text-purple-700",
+  gray: "bg-gray-100 text-gray-600",
+}
 const FLAG_CHIP: Record<string, string> = {
   red: "bg-red-50 text-red-700",
   yellow: "bg-amber-50 text-amber-800",
@@ -80,6 +88,8 @@ export default function CompanyListView({
   const router = useRouter()
   const [q, setQ] = useState("")
   const [status, setStatus] = useState("all")
+  // 法人グループ・タグでの絞り込み（グループID）
+  const [groupFilter, setGroupFilter] = useState("")
   const [focus, setFocus] = useState<FocusKey>("")
   const [prioritize, setPrioritize] = useState(true)
   const [sort, setSort] = useState<SortKey>("updated")
@@ -95,8 +105,21 @@ export default function CompanyListView({
     )
   }, [rows, q])
 
-  const statusCount = (key: string) => (key === "all" ? searched.length : searched.filter(r => r.status === key).length)
-  const byStatus = status === "all" ? searched : searched.filter(r => r.status === status)
+  // 絞り込みに使えるグループ・タグ（一覧に出ている企業から集める）
+  const groupOptions = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; kind: "corporate" | "tag" }>()
+    for (const r of rows) {
+      if (r.corporateGroup) m.set(r.corporateGroup.id, { ...r.corporateGroup, kind: "corporate" })
+      for (const t of r.tags) m.set(t.id, { id: t.id, name: t.name, kind: "tag" })
+    }
+    return [...m.values()].sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name, "ja") : a.kind === "tag" ? -1 : 1))
+  }, [rows])
+  const byGroup = groupFilter
+    ? searched.filter(r => r.corporateGroup?.id === groupFilter || r.tags.some(t => t.id === groupFilter))
+    : searched
+
+  const statusCount = (key: string) => (key === "all" ? byGroup.length : byGroup.filter(r => r.status === key).length)
+  const byStatus = status === "all" ? byGroup : byGroup.filter(r => r.status === status)
 
   const hasFlag = (r: CompanyRow, key: FocusKey) =>
     key === "attention" ? r.flags.some(f => f.level !== "gray") : r.flags.some(f => f.key === key)
@@ -240,6 +263,21 @@ export default function CompanyListView({
                 </button>
               )
             })}
+            {groupOptions.length > 0 && (
+              <select value={groupFilter} onChange={e => setGroupFilter(e.target.value)} className="border border-gray-200 rounded-full px-3 py-1.5 text-xs text-gray-700 bg-white">
+                <option value="">すべてのグループ・タグ</option>
+                {groupOptions.filter(g => g.kind === "tag").length > 0 && (
+                  <optgroup label="タグ">
+                    {groupOptions.filter(g => g.kind === "tag").map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </optgroup>
+                )}
+                {groupOptions.filter(g => g.kind === "corporate").length > 0 && (
+                  <optgroup label="法人グループ">
+                    {groupOptions.filter(g => g.kind === "corporate").map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
+            )}
             <div className="flex-1" />
             {!advisorMode && (
               <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
@@ -326,7 +364,15 @@ export default function CompanyListView({
                         <div className="text-xs text-gray-400 mt-0.5">
                           {r.companyId ? "ID " + r.companyId : "ID未登録"}
                           {r.prefecture !== "不明" && <span className="ml-2">{r.prefecture}</span>}
+                          {r.corporateGroup && <span className="ml-2 text-gray-500">🏢 {r.corporateGroup.name}</span>}
                         </div>
+                        {r.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {r.tags.map(t => (
+                              <span key={t.id} className={"text-[10px] px-1.5 py-0.5 rounded-full font-medium " + (TAG_CHIP[t.color ?? "gray"] ?? TAG_CHIP.gray)}>{t.name}</span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <span className={"inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium ring-1 " + (STATUS_CHIP[r.status] ?? "bg-gray-100 text-gray-600 ring-gray-200")}>

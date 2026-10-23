@@ -6,12 +6,14 @@ import { prisma } from "@/lib/prisma"
 import { canViewMarketing } from "@/lib/permissions"
 import { PREFECTURES } from "@/lib/area"
 import { addMonths, currentYmJst, ymKey } from "@/lib/funnelAnalysis"
+import { segmentCounts } from "@/lib/segments"
 
 /**
  * 転職道全体の応募者の属性（年代構成・平均年齢・女性比率・二種有り比率・未開封率）。
  *
  * query:
  *   view      = trend（期間ごとの推移・既定） | compare（流入元・エリアごとの比較）
+ *             | segments（年代別・二種の有無別の入社率。全体平均との比較つき）
  *   unit      = month | quarter（trend のとき。既定 quarter）
  *   groupBy   = inflow | pref（compare のとき。既定 inflow）
  *   months    = compare の集計期間（今月を含む直近Nか月。既定12、最大60）
@@ -70,7 +72,8 @@ export async function GET(req: Request) {
   }
 
   const sp = new URL(req.url).searchParams
-  const view = sp.get("view") === "compare" ? "compare" : "trend"
+  const viewParam = sp.get("view")
+  const view = viewParam === "compare" || viewParam === "segments" ? viewParam : "trend"
   const unit = sp.get("unit") === "month" ? "month" : "quarter"
   const groupBy = sp.get("groupBy") === "pref" ? "pref" : "inflow"
   const months = Math.min(60, Math.max(1, Number(sp.get("months")) || 12))
@@ -85,10 +88,8 @@ export async function GET(req: Request) {
   if (excludeTel) conds.push(Prisma.sql`a."entryType" IS DISTINCT FROM 'TEL応募'`)
   if (inflow) conds.push(Prisma.sql`a."inflow" = ${inflow}`)
   if (pref) conds.push(Prisma.sql`${prefSql} = ${pref}`)
-  if (view === "compare") {
-    const fromKey = ymKey(addMonths(currentYmJst(), -(months - 1)))
-    conds.push(Prisma.sql`(a."year" * 100 + a."month") >= ${fromKey}`)
-  }
+  const periodCond = Prisma.sql`(a."year" * 100 + a."month") >= ${ymKey(addMonths(currentYmJst(), -(months - 1)))}`
+  if (view === "compare" || view === "segments") conds.push(periodCond)
   const where = Prisma.join(conds, " AND ")
   const from = Prisma.sql`FROM "ApplicationRecord" a LEFT JOIN "Company" c ON c."id" = a."companyRef"`
 
@@ -119,6 +120,17 @@ export async function GET(req: Request) {
         ...shape(r),
       })),
     })
+  }
+
+  // 年代別・二種別の入社率（絞り込みあり）と、全体平均（流入元・エリアの絞り込みなし）
+  if (view === "segments") {
+    const baseConds: Prisma.Sql[] = [periodCond]
+    if (excludeTel) baseConds.push(Prisma.sql`a."entryType" IS DISTINCT FROM 'TEL応募'`)
+    const [target, baseline] = await Promise.all([
+      segmentCounts(from, where),
+      segmentCounts(from, Prisma.join(baseConds, " AND ")),
+    ])
+    return NextResponse.json({ view, months, options, target, baseline, filtered: !!(inflow || pref) })
   }
 
   // 比較（流入元ごと／都道府県ごと）

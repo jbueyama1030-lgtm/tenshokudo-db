@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import ContractPeriods from "@/components/ContractPeriods"
 import ApplicantProfile from "@/components/ApplicantProfile"
+import CompanyGroupChips from "@/components/CompanyGroupChips"
 import { extractPref } from "@/lib/area"
 import { IconBuilding, IconChart, IconChevronRight, IconExternal, IconHome, IconPencil, IconPhone } from "@/components/icons"
 import {
@@ -663,6 +664,12 @@ export default function CompanyDetailPage() {
                   )}
                   {company.hasReferralContract && <span className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-medium">🤝 紹介契約あり</span>}
                 </div>
+                {/* 法人グループ・タグ（社内のみ） */}
+                {!isAgency && (
+                  <div className="mt-2">
+                    <CompanyGroupChips companyId={company.id} canEdit={roles.includes("admin") || roles.includes("sales") || roles.includes("marketer")} />
+                  </div>
+                )}
               </div>
               <div className="flex-1" />
 

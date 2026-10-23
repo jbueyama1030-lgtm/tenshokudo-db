@@ -57,6 +57,10 @@ export type CompanyRow = {
   hire3m: number
   /** 直近30日の応募のうち、企業がまだ開封していない件数 */
   unopened: number
+  /** 法人グループ（社内向け） */
+  corporateGroup: { id: string; name: string } | null
+  /** タグ（社内向け） */
+  tags: { id: string; name: string; color: string | null }[]
   lastAppliedAt: string | null
   nextAction: string | null
   nextActionDate: string | null
@@ -75,8 +79,10 @@ export type CompanyListParams = {
   focus: string
   /** 人材紹介（advisor）向けの追加条件。prisma の where にそのまま混ぜる */
   extraWhere?: Record<string, unknown>
-  /** 指定すると、この企業IDだけに絞る（CSVの選択出力用） */
+  /** 指定すると、この企業IDだけに絞る（CSVの選択出力・グループ詳細用） */
   ids?: string[]
+  /** グループ・タグを返すか（代理店ユーザーには返さない） */
+  withGroups?: boolean
 }
 
 const DAY = 86400000
@@ -117,6 +123,8 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       user: { select: { name: true, roles: true, role: true } },
       contractPeriods: { select: { contractStart: true, contractEnd: true, contractRenewal: true } },
       jobArticle: { select: { pageUpdatedAt: true, isListed: true } },
+      corporateGroup: { select: { id: true, name: true } },
+      tags: { select: { id: true, name: true, color: true } },
     },
   })
 
@@ -220,6 +228,8 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       apply3m: st ? Number(st.apply3m) : 0,
       hire3m: st ? Number(st.hire3m) : 0,
       unopened: st ? Number(st.unopened) : 0,
+      corporateGroup: p.withGroups ? c.corporateGroup : null,
+      tags: p.withGroups ? c.tags : [],
       lastAppliedAt: st?.lastApplied ? new Date(st.lastApplied).toISOString() : null,
       nextAction: c.nextAction,
       nextActionDate: c.nextActionDate ? c.nextActionDate.toISOString() : null,
