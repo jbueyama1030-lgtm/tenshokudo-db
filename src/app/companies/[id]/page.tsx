@@ -4,6 +4,8 @@ import Sidebar from "@/components/Sidebar"
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import ContractPeriods from "@/components/ContractPeriods"
+import { extractPref } from "@/lib/area"
+import { IconBuilding, IconChart, IconChevronRight, IconExternal, IconHome, IconPencil, IconPhone } from "@/components/icons"
 import {
   getRoles,
   canEditCompanyFull,
@@ -36,6 +38,7 @@ type DriverSales = {
 type ContractPeriodLite = {
   contractStart: string | null
   contractEnd: string | null
+  contractRenewal?: string | null
   monthlyFee: number | null
   discountRate: number | null
   options: Option[] | null
@@ -108,6 +111,9 @@ type Company = {
 }
 
 type User = { id: string; name: string }
+
+/** 企業詳細のタブ */
+type DetailTab = "overview" | "contract" | "results" | "referral" | "production"
 
 // 制作案件の型とラベル
 type ProductionTask = {
@@ -355,6 +361,9 @@ export default function CompanyDetailPage() {
   const [company, setCompany] = useState<Company | null>(null)
   // 企業を読み込めなかったとき（権限外・削除済みなど）のメッセージ
   const [loadError, setLoadError] = useState("")
+  // 表示中のタブと、開いているメニュー
+  const [tab, setTab] = useState<DetailTab>("overview")
+  const [openMenu, setOpenMenu] = useState<"report" | "more" | null>(null)
   const [users, setUsers] = useState<User[]>([])
   // editMode: none=閲覧 / full=全項目編集 / referral=人材紹介項目のみ編集
   const [editMode, setEditMode] = useState<"none" | "full" | "referral">("none")
@@ -403,6 +412,7 @@ export default function CompanyDetailPage() {
   }
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#production") setTab("production")
     loadCompany()
     loadPeriods()
     fetch("/api/users").then(r => r.json()).then(setUsers)
@@ -592,57 +602,187 @@ export default function CompanyDetailPage() {
   const formVal = form as unknown as Record<string, unknown>
   const compVal = company as unknown as Record<string, unknown>
 
+  // ===== ヘッダーの数字 =====
+  const now = new Date()
+  const activeRenewal = periods
+    .filter(periodIsActive)
+    .map(p => p.contractRenewal)
+    .filter((d): d is string => !!d && new Date(d) >= now)
+    .sort()[0] ?? null
+  const renewalDays = activeRenewal ? Math.ceil((new Date(activeRenewal).getTime() - now.getTime()) / 86400000) : null
+  const prefecture = extractPref(company.address)
+  const isAgency = isAgencyUser(session)
+
+  const TABS: { key: DetailTab; label: string; count?: number }[] = [
+    { key: "overview", label: "概要" },
+    { key: "contract", label: "契約・売上" },
+    { key: "results", label: "応募・実績" },
+    { key: "referral", label: "人材紹介" },
+    ...(!isAgency ? [{ key: "production" as DetailTab, label: "制作案件", count: tasks.length }] : []),
+  ]
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar userName={userName} />
       <main className="flex-1 overflow-auto">
-        <div className="px-8 py-6 max-w-5xl">
-          <div className="flex items-center gap-3 mb-4">
-            <a href="/companies" className="text-sm text-gray-400 hover:text-gray-600">← 企業一覧</a>
-            <span className="text-gray-300">/</span>
-            <h1 className="text-xl font-bold text-gray-800">{company.name}</h1>
-            {company.companyId && <span className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded">ID: {company.companyId}</span>}
-            {company.hasReferralContract && <span className="text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full font-medium">🤝 紹介契約あり</span>}
+        {/* 編集中のバー */}
+        {editMode !== "none" && (
+          <div className="sticky top-0 z-20 bg-blue-600 text-white px-8 py-2.5 flex items-center gap-3 shadow">
+            <span className="text-sm font-medium">{editMode === "referral" ? "🤝 人材紹介の項目を編集中" : "✏️ 編集中"}</span>
+            <span className="text-xs text-blue-100">{editMode === "referral" ? "人材紹介タブの項目だけ変更できます" : "各タブの項目を変更して保存してください"}</span>
+            <div className="flex-1" />
+            <button onClick={handleCancel} className="px-4 py-1.5 text-sm rounded-lg border border-white/40 hover:bg-white/10">キャンセル</button>
+            <button onClick={handleSave} disabled={loading} className="px-4 py-1.5 text-sm rounded-lg bg-white text-blue-700 font-medium hover:bg-blue-50 disabled:opacity-50">{loading ? "保存中..." : "保存する"}</button>
+          </div>
+        )}
+
+        <div className="px-8 py-6 max-w-7xl">
+          {/* パンくず */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-3">
+            <IconHome className="w-3.5 h-3.5" />
+            <a href="/dashboard" className="hover:text-gray-600">Home</a>
+            <IconChevronRight className="w-3 h-3" />
+            <a href="/companies" className="hover:text-gray-600">企業一覧</a>
+            <IconChevronRight className="w-3 h-3" />
+            <span className="text-gray-600 truncate">{company.name}</span>
           </div>
 
-          <div className="flex gap-2 mb-6 items-center">
-            {editMode !== "none" ? (
-              <>
-                <button onClick={handleSave} disabled={loading} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{loading ? "保存中..." : "💾 保存"}</button>
-                <button onClick={handleCancel} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">キャンセル</button>
-                {editMode === "referral" && (
-                  <span className="text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">🤝 人材紹介の項目のみ編集できます</span>
-                )}
-              </>
-            ) : (
-              <>
-                {canFull && (
-                  <button onClick={() => setEditMode("full")} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">✏️ 全項目を編集</button>
-                )}
-                {canReferral && (
-                  <button onClick={() => setEditMode("referral")} className={"px-4 py-2 rounded-lg text-sm font-medium " + (canFull ? "border border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 text-white hover:bg-emerald-700")}>🤝 紹介情報を編集</button>
-                )}
-                {/* レポート（採用レポート・新規提案は閲覧できる人なら誰でも。記事改善は社内のみ） */}
-                <button onClick={() => router.push("/companies/" + id + "/report")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">📊 採用レポート</button>
-                <button onClick={() => router.push("/companies/" + id + "/proposal")} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">📝 新規提案</button>
-                {!isAgencyUser(session) && (
-                  <button onClick={() => router.push("/companies/" + id + "/article-review")} className="px-4 py-2 text-sm border border-amber-300 rounded-lg text-amber-800 hover:bg-amber-50">🛠 記事改善（社内）</button>
-                )}
-                {canDelete && (
-                  <button onClick={handleDelete} className="px-4 py-2 text-sm border border-red-300 rounded-lg text-red-600 hover:bg-red-50">🗑️ 削除</button>
-                )}
-                {!canFull && !canReferral && (
-                  <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">
-                    {productionOnly ? "👁 閲覧のみ（制作）" : "👁 閲覧のみ"}
-                  </span>
-                )}
-                {inlineSavedMsg && <span className="text-xs text-green-600 self-center ml-1">✓ 保存しました</span>}
-              </>
-            )}
+          {/* 企業ヘッダー */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-5">
+            <div className="flex items-start gap-4">
+              <span className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><IconBuilding className="w-6 h-6" /></span>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900 leading-tight">{company.name}</h1>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="text-xs text-gray-500">{company.companyId ? "ID " + company.companyId : "ID未登録"}</span>
+                  {prefecture !== "不明" && <span className="text-xs text-gray-500">・{prefecture}</span>}
+                  <span className={"text-xs px-2.5 py-0.5 rounded-full font-medium " + (STATUS_MAP[company.status]?.cls ?? "bg-gray-100 text-gray-600")}>{STATUS_MAP[company.status]?.label ?? company.status}</span>
+                  {company.temperature && TEMP_MAP[company.temperature] && (
+                    <span className={"text-xs px-2.5 py-0.5 rounded-full font-medium " + TEMP_MAP[company.temperature].cls}>{TEMP_MAP[company.temperature].label}</span>
+                  )}
+                  {company.hasReferralContract && <span className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-medium">🤝 紹介契約あり</span>}
+                </div>
+              </div>
+              <div className="flex-1" />
+
+              {editMode === "none" && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {inlineSavedMsg && <span className="text-xs text-green-600 mr-1">✓ 保存しました</span>}
+                  {!canFull && !canReferral && (
+                    <span className="text-xs text-gray-400 bg-gray-100 px-3 py-2 rounded-lg">{productionOnly ? "閲覧のみ（制作）" : "閲覧のみ"}</span>
+                  )}
+
+                  {/* レポート */}
+                  <div className="relative">
+                    <button type="button" onClick={() => setOpenMenu(openMenu === "report" ? null : "report")}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 rounded-xl text-gray-700 bg-white hover:bg-gray-50 shadow-sm">
+                      <IconChart className="w-4 h-4" /> レポート <span className="text-gray-400">▾</span>
+                    </button>
+                    {openMenu === "report" && (
+                      <div className="absolute right-0 mt-2 w-60 bg-white border border-gray-200 rounded-xl shadow-lg z-30 py-1.5">
+                        <button type="button" onClick={() => router.push("/companies/" + id + "/report")} className="w-full text-left px-4 py-2.5 hover:bg-gray-50">
+                          <div className="text-sm text-gray-900">📊 採用レポート</div>
+                          <div className="text-xs text-gray-400">顧客向けの定例報告</div>
+                        </button>
+                        <button type="button" onClick={() => router.push("/companies/" + id + "/proposal")} className="w-full text-left px-4 py-2.5 hover:bg-gray-50">
+                          <div className="text-sm text-gray-900">📝 新規提案</div>
+                          <div className="text-xs text-gray-400">未掲載企業への提案資料</div>
+                        </button>
+                        {!isAgency && (
+                          <button type="button" onClick={() => router.push("/companies/" + id + "/article-review")} className="w-full text-left px-4 py-2.5 hover:bg-gray-50">
+                            <div className="text-sm text-gray-900">🛠 記事改善（社内）</div>
+                            <div className="text-xs text-gray-400">制作向けの改善指示・商談メモ込み</div>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {canFull && (
+                    <button type="button" onClick={() => setEditMode("full")} className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 shadow-sm">
+                      <IconPencil className="w-4 h-4" /> 編集
+                    </button>
+                  )}
+
+                  {/* その他 */}
+                  {(canReferral || canDelete) && (
+                    <div className="relative">
+                      <button type="button" onClick={() => setOpenMenu(openMenu === "more" ? null : "more")}
+                        className="w-10 h-10 inline-flex items-center justify-center border border-gray-200 rounded-xl text-gray-500 bg-white hover:bg-gray-50 shadow-sm" aria-label="その他の操作">
+                        ⋯
+                      </button>
+                      {openMenu === "more" && (
+                        <div className="absolute right-0 mt-2 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-30 py-1.5">
+                          {canReferral && (
+                            <button type="button" onClick={() => { setOpenMenu(null); setEditMode("referral"); setTab("referral") }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                              🤝 紹介情報だけ編集
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button type="button" onClick={() => { setOpenMenu(null); handleDelete() }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50">
+                              🗑️ この企業を削除
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 数字 */}
+            <div className="grid grid-cols-4 gap-3 mt-5">
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <div className="text-xs text-gray-500">契約更新まで</div>
+                <div className={"text-xl font-bold " + (renewalDays != null && renewalDays <= 30 ? "text-red-600" : renewalDays != null && renewalDays <= 60 ? "text-amber-600" : "text-gray-900")}>
+                  {renewalDays != null ? <>{renewalDays}<span className="text-xs font-normal text-gray-400 ml-1">日</span></> : <span className="text-sm font-normal text-gray-400">-</span>}
+                </div>
+                {activeRenewal && <div className="text-[11px] text-gray-400">{activeRenewal.slice(0, 10)}</div>}
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <div className="text-xs text-gray-500">年間売上（契約中）</div>
+                <div className="text-xl font-bold text-gray-900">{activeAnnualRevenue > 0 ? "¥" + fmt(activeAnnualRevenue) : <span className="text-sm font-normal text-gray-400">-</span>}</div>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <div className="text-xs text-gray-500">保有台数 / ドライバー</div>
+                <div className="text-xl font-bold text-gray-900">
+                  {company.vehicleCount ?? "-"}<span className="text-xs font-normal text-gray-400 ml-0.5">台</span>
+                  <span className="text-gray-300 mx-1.5">/</span>
+                  {company.driverCount ?? "-"}<span className="text-xs font-normal text-gray-400 ml-0.5">名</span>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <div className="text-xs text-gray-500">担当者 / 年間採用目標</div>
+                <div className="text-xl font-bold text-gray-900">
+                  <span className="text-base">{company.user.name}</span>
+                  <span className="text-gray-300 mx-1.5">/</span>
+                  {company.annualHiringTarget ?? "-"}<span className="text-xs font-normal text-gray-400 ml-0.5">名</span>
+                </div>
+              </div>
+            </div>
           </div>
 
+          {/* メニューの外側クリックで閉じる */}
+          {openMenu && <div className="fixed inset-0 z-20" onClick={() => setOpenMenu(null)} />}
+
+          <div className="flex gap-6 items-start">
+            {/* 左：タブ */}
+            <div className="flex-1 min-w-0">
+              <div className="flex gap-1 border-b border-gray-200 mb-4">
+                {TABS.map(t => (
+                  <button key={t.key} type="button" onClick={() => setTab(t.key)}
+                    className={"px-4 py-2.5 text-sm -mb-px border-b-2 transition " + (tab === t.key ? "border-blue-600 text-blue-600 font-medium" : "border-transparent text-gray-500 hover:text-gray-700")}>
+                    {t.label}
+                    {t.count != null && t.count > 0 && <span className="ml-1.5 text-[10px] bg-gray-100 text-gray-500 rounded-full px-1.5 py-0.5">{t.count}</span>}
+                  </button>
+                ))}
+              </div>
+
+              {tab === "overview" && (
+                <>
           {/* 基本情報 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">基本情報</h2>
             <div className="grid grid-cols-3 gap-4">
               <Field label="企業名">
@@ -725,13 +865,13 @@ export default function CompanyDetailPage() {
 
           {/* 採用課題・アプリ */}
           <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-semibold text-gray-700 mb-3">採用課題</h2>
               {editing
                 ? <textarea value={form.adoptionChallenge ?? ""} onChange={e => set("adoptionChallenge", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="採用における課題を記録..." />
                 : <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{company.adoptionChallenge || "-"}</p>}
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
               <h2 className="text-sm font-semibold text-gray-700 mb-3">導入アプリ・配車割合</h2>
               <div className="mb-3">
                 <div className="text-xs text-gray-400 mb-2">導入アプリ</div>
@@ -765,7 +905,7 @@ export default function CompanyDetailPage() {
           </div>
 
           {/* 募集勤務形態 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">募集勤務形態</h2>
             <div className="flex gap-2 flex-wrap">
               {ALL_SHIFTS.map(s => {
@@ -783,7 +923,7 @@ export default function CompanyDetailPage() {
           </div>
 
           {/* ドライバー売上情報 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">🚕 ドライバー・会社売上情報</h2>
             {editing ? (
               <div className="space-y-4">
@@ -895,8 +1035,27 @@ export default function CompanyDetailPage() {
             )}
           </div>
 
+          {/* メモ */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
+            <h2 className="text-sm font-semibold text-gray-700 mb-3">メモ</h2>
+            {editing
+              ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+              : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
+          </div>
+                </>
+              )}
+
+              {tab === "contract" && (
+                <>
+          {/* 掲載契約（契約期間） */}
+          <ContractPeriods
+            companyId={company.id}
+            canEdit={canFull}
+            onStatusMaybeChanged={() => { loadCompany(); loadPeriods() }}
+          />
+
           {/* 競合媒体 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">転職道以外の利用媒体・採用単価</h2>
             <table className="w-full text-sm mb-3">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -925,16 +1084,13 @@ export default function CompanyDetailPage() {
               <TenshokudoCostPerHire annualRevenue={activeAnnualRevenue} records={company.monthlyRecords ?? []} />
             </div>
           </div>
+                </>
+              )}
 
-          {/* 掲載契約（契約期間） */}
-          <ContractPeriods
-            companyId={company.id}
-            canEdit={canFull}
-            onStatusMaybeChanged={() => { loadCompany(); loadPeriods() }}
-          />
-
+              {tab === "results" && (
+                <>
           {/* 転職道実績 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">転職道実績（累計）</h2>
             <div className="grid grid-cols-2 gap-4 max-w-md">
               <div className="bg-gray-50 rounded-lg p-4">
@@ -953,123 +1109,13 @@ export default function CompanyDetailPage() {
           {company.monthlyRecords && company.monthlyRecords.length > 0 && (
             <MonthlyRecordsTable records={company.monthlyRecords} />
           )}
-
-          {/* 商談情報（インライン編集対応） */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-gray-700">商談情報</h2>
-              {canInlineEdit && (
-                <span className="text-xs text-gray-400">クリックしてその場で編集できます</span>
+                </>
               )}
-            </div>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <Field label="温度感">
-                {editing ? (
-                  <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
-                    <option value="">未設定</option>
-                    <option value="hot">🔥 ホット</option>
-                    <option value="warm">☀️ ウォーム</option>
-                    <option value="cold">❄️ コールド</option>
-                  </select>
-                ) : inlineField === "temperature" ? (
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={inlineValue}
-                      onChange={e => saveInline("temperature", e.target.value)}
-                      disabled={inlineSaving}
-                      autoFocus
-                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">未設定</option>
-                      <option value="hot">🔥 ホット</option>
-                      <option value="warm">☀️ ウォーム</option>
-                      <option value="cold">❄️ コールド</option>
-                    </select>
-                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => canInlineEdit && startInline("temperature", company.temperature ?? "")}
-                    disabled={!canInlineEdit}
-                    className={"text-left " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
-                  >
-                    {company.temperature
-                      ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_MAP[company.temperature]?.cls ?? "")}>{TEMP_MAP[company.temperature]?.label ?? company.temperature}</span>
-                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 設定" : "-"}</span>}
-                  </button>
-                )}
-              </Field>
 
-              <Field label="次回アクション">
-                {editing ? (
-                  <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 資料送付" />
-                ) : inlineField === "nextAction" ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={inlineValue}
-                      onChange={e => setInlineValue(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") saveInline("nextAction"); if (e.key === "Escape") cancelInline() }}
-                      disabled={inlineSaving}
-                      autoFocus
-                      className="flex-1 border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="例: 資料送付"
-                    />
-                    <button onClick={() => saveInline("nextAction")} disabled={inlineSaving} className="text-xs bg-blue-600 text-white rounded px-2 py-1.5 hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">{inlineSaving ? "..." : "保存"}</button>
-                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">取消</button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => canInlineEdit && startInline("nextAction", company.nextAction ?? "")}
-                    disabled={!canInlineEdit}
-                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
-                  >
-                    {company.nextAction
-                      ? <span className="text-sm text-gray-900">{company.nextAction}</span>
-                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 入力" : "-"}</span>}
-                  </button>
-                )}
-              </Field>
-
-              <Field label="次回アクション日">
-                {editing ? (
-                  <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
-                ) : inlineField === "nextActionDate" ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={inlineValue.slice(0, 10)}
-                      onChange={e => saveInline("nextActionDate", e.target.value)}
-                      disabled={inlineSaving}
-                      autoFocus
-                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => canInlineEdit && startInline("nextActionDate", company.nextActionDate ?? "")}
-                    disabled={!canInlineEdit}
-                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
-                  >
-                    {company.nextActionDate
-                      ? <span className="text-sm text-gray-900">{company.nextActionDate.slice(0, 10)}</span>
-                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 日付を設定" : "-"}</span>}
-                  </button>
-                )}
-              </Field>
-            </div>
-            <Field label="商談メモ">
-              {editing
-                ? <textarea value={form.negotiationMemo ?? ""} onChange={e => set("negotiationMemo", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="商談の詳細を記録..." />
-                : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.negotiationMemo ?? "-"}</p>}
-            </Field>
-          </div>
-
+              {tab === "referral" && (
+                <>
           {/* 人材紹介（キャリアアドバイザー向け） */}
-          <div className={"bg-white rounded-xl border p-5 mb-4 " + (editMode === "referral" ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200")}>
+          <div className={"bg-white rounded-2xl border shadow-sm p-5 mb-4 " + (editMode === "referral" ? "border-emerald-300 ring-1 ring-emerald-200" : "border-gray-200")}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">🤝 人材紹介</h2>
               {editingReferral ? (
@@ -1245,17 +1291,13 @@ export default function CompanyDetailPage() {
               </div>
             </div>
           </div>
+                </>
+              )}
 
-          {/* メモ */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-8">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">メモ</h2>
-            {editing
-              ? <textarea value={form.memo ?? ""} onChange={e => set("memo", e.target.value)} rows={3} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
-              : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.memo ?? "-"}</p>}
-          </div>
-
+              {tab === "production" && !isAgency && (
+                <>
           {/* 制作案件（企業一覧の「制作依頼」ボタンからここへ飛ぶ） */}
-          <div id="production" className="bg-white rounded-xl border border-gray-200 p-5 mb-8 scroll-mt-6">
+          <div id="production" className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4 scroll-mt-6">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">🎨 制作案件</h2>
 
             {canTask && (
@@ -1335,6 +1377,148 @@ export default function CompanyDetailPage() {
                 </table>
               </div>
             )}
+          </div>
+                </>
+              )}
+            </div>
+
+            {/* 右：常に見える商談・連絡先 */}
+            <aside className="w-80 shrink-0 sticky top-6 space-y-4">
+          {/* 商談情報（インライン編集対応） */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-gray-700">商談情報</h2>
+              {canInlineEdit && (
+                <span className="text-xs text-gray-400">クリックしてその場で編集できます</span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-4 mb-4">
+              <Field label="温度感">
+                {editing ? (
+                  <select value={form.temperature ?? ""} onChange={e => set("temperature", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    <option value="">未設定</option>
+                    <option value="hot">🔥 ホット</option>
+                    <option value="warm">☀️ ウォーム</option>
+                    <option value="cold">❄️ コールド</option>
+                  </select>
+                ) : inlineField === "temperature" ? (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={inlineValue}
+                      onChange={e => saveInline("temperature", e.target.value)}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">未設定</option>
+                      <option value="hot">🔥 ホット</option>
+                      <option value="warm">☀️ ウォーム</option>
+                      <option value="cold">❄️ コールド</option>
+                    </select>
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("temperature", company.temperature ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.temperature
+                      ? <span className={"text-xs px-2 py-1 rounded-full font-medium " + (TEMP_MAP[company.temperature]?.cls ?? "")}>{TEMP_MAP[company.temperature]?.label ?? company.temperature}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 設定" : "-"}</span>}
+                  </button>
+                )}
+              </Field>
+
+              <Field label="次回アクション">
+                {editing ? (
+                  <input value={form.nextAction ?? ""} onChange={e => set("nextAction", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 資料送付" />
+                ) : inlineField === "nextAction" ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={inlineValue}
+                      onChange={e => setInlineValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") saveInline("nextAction"); if (e.key === "Escape") cancelInline() }}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="flex-1 border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="例: 資料送付"
+                    />
+                    <button onClick={() => saveInline("nextAction")} disabled={inlineSaving} className="text-xs bg-blue-600 text-white rounded px-2 py-1.5 hover:bg-blue-700 disabled:opacity-50 whitespace-nowrap">{inlineSaving ? "..." : "保存"}</button>
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("nextAction", company.nextAction ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.nextAction
+                      ? <span className="text-sm text-gray-900">{company.nextAction}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 入力" : "-"}</span>}
+                  </button>
+                )}
+              </Field>
+
+              <Field label="次回アクション日">
+                {editing ? (
+                  <input type="date" value={form.nextActionDate?.slice(0, 10) ?? ""} onChange={e => set("nextActionDate", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" />
+                ) : inlineField === "nextActionDate" ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={inlineValue.slice(0, 10)}
+                      onChange={e => saveInline("nextActionDate", e.target.value)}
+                      disabled={inlineSaving}
+                      autoFocus
+                      className="border border-blue-400 rounded-lg px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button onClick={cancelInline} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => canInlineEdit && startInline("nextActionDate", company.nextActionDate ?? "")}
+                    disabled={!canInlineEdit}
+                    className={"text-left w-full " + (canInlineEdit ? "cursor-pointer hover:opacity-70" : "cursor-default")}
+                  >
+                    {company.nextActionDate
+                      ? <span className="text-sm text-gray-900">{company.nextActionDate.slice(0, 10)}</span>
+                      : <span className="text-sm text-gray-400">{canInlineEdit ? "＋ 日付を設定" : "-"}</span>}
+                  </button>
+                )}
+              </Field>
+            </div>
+            <Field label="商談メモ">
+              {editing
+                ? <textarea value={form.negotiationMemo ?? ""} onChange={e => set("negotiationMemo", e.target.value)} rows={4} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="商談の詳細を記録..." />
+                : <p className="text-sm text-gray-900 whitespace-pre-wrap">{company.negotiationMemo ?? "-"}</p>}
+            </Field>
+          </div>
+
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+                <h2 className="text-sm font-semibold text-gray-700 mb-3">連絡先</h2>
+                {company.phone ? (
+                  <a href={"tel:" + company.phone.replace(/[^0-9+]/g, "")} className="flex items-center justify-center gap-2 w-full border border-gray-200 rounded-xl py-2.5 text-sm text-gray-800 hover:bg-gray-50 mb-3">
+                    <IconPhone className="w-4 h-4 text-blue-600" /> {company.phone}
+                  </a>
+                ) : (
+                  <p className="text-sm text-gray-400 mb-3">電話番号が未登録です</p>
+                )}
+                <div className="space-y-2 text-sm">
+                  <div className="grid grid-cols-[5rem_1fr] gap-2"><span className="text-xs text-gray-400 pt-0.5">企業担当者</span><span className="text-gray-800">{company.contactPerson ?? "-"}{company.contactPosition ? "（" + company.contactPosition + "）" : ""}</span></div>
+                  <div className="grid grid-cols-[5rem_1fr] gap-2"><span className="text-xs text-gray-400 pt-0.5">住所</span><span className="text-gray-800">{company.address ?? "-"}</span></div>
+                  <div className="grid grid-cols-[5rem_1fr] gap-2">
+                    <span className="text-xs text-gray-400 pt-0.5">HP</span>
+                    {company.websiteUrl ? (
+                      <a href={company.websiteUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all inline-flex items-center gap-1">{company.websiteUrl}<IconExternal className="w-3 h-3 shrink-0" /></a>
+                    ) : <span className="text-gray-400">-</span>}
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
       </main>
