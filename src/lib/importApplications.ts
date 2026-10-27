@@ -237,7 +237,9 @@ export async function importApplicationsCsv(
     const age = iAge >= 0 ? parseAge(r[iAge] ?? "") : null
     const gender = iGender >= 0 ? parseGender(r[iGender] ?? "") : null
     const hasLicense2 = iLicense2 >= 0 ? parseLicense2(r[iLicense2] ?? "") : null
-    const companyOpened = iOpened >= 0 ? parseOpened(r[iOpened] ?? "") : null
+    // TEL応募は管理画面で「開く」操作がないため、CSVでは常に「未開封」になる。
+    // 開封の判定には使えないので保存しない（null＝判定の対象外）。
+    const companyOpened = iOpened >= 0 && entryType !== "TEL応募" ? parseOpened(r[iOpened] ?? "") : null
     const pref = iAddress >= 0 ? extractPref(r[iAddress] ?? "") : UNKNOWN_PREF
     const applicantPref = pref === UNKNOWN_PREF ? null : pref
 
