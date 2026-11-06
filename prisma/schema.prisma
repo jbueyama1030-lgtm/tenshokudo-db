@@ -325,6 +325,26 @@ model AdCost {
   @@index([inflow])
 }
 
+// 損益表の明細名 → 広告費（AdCost）への取り込み方。一度設定すれば次回から自動で使う
+model AdCostMapping {
+  id          String   @id @default(cuid())
+  // 損益表の明細名（貼り付けた表の名前そのまま）
+  sourceName  String   @unique
+  // direct=流入元に紐づける / overhead=全体費（流入元なし） / split=2つに分ける / skip=取り込まない
+  mode        String   @default("direct")
+  // 取り込むときの AdCost の明細名（過去のデータと名前をそろえるため。空なら sourceName）
+  adName      String?
+  inflow      String?
+  // split のとき：入力した金額を A、残りを B に入れる
+  splitAName   String?
+  splitAInflow String?
+  splitBName   String?
+  splitBInflow String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model ContractPeriod {
   id        String   @id @default(cuid())
   companyId String

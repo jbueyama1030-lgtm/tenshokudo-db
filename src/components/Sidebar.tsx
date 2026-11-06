@@ -71,7 +71,8 @@ export default function Sidebar({ userName }: { userName?: string }) {
         ...(canMarketer ? [
           { href: "/import/applications", label: "📥 応募明細インポート" },
           { href: "/import/articles", label: "📰 記事インポート" },
-          { href: "/import/ad-costs", label: "💰 広告費インポート" },
+          { href: "/import/ad-costs/sheet", label: "💴 広告費（損益表から）" },
+          { href: "/import/ad-costs", label: "💰 広告費インポート（CSV）" },
           { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
         ] : []),
         ...(canAdmin ? [{ href: "/users", label: "👥 ユーザー管理" }] : []),
@@ -79,7 +80,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
     },
   ].filter(s => s.links.length > 0)
 
-  const exactOnly = ["/companies", "/marketing"]
+  const exactOnly = ["/companies", "/marketing", "/import/ad-costs"]
 
   return (
     <aside className="w-48 min-w-48 bg-[#0C1A2E] flex flex-col">
