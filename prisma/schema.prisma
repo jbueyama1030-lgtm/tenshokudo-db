@@ -284,6 +284,13 @@ model ApplicationRecord {
   companyOpened  Boolean?  // 企業が応募を開封したか（CSVの「企業開封」）
   applicantPref  String?   // 応募者の都道府県（CSVの「住所」から都道府県だけ取り出す）
 
+  // 転職道側の応募ID（応募通知APIの applicationId と、CSVの「応募ID」列）。
+  // これがあれば応募を確実に見分けられる。列が無かった頃のデータは null
+  externalId  String?  @unique
+
+  // 最初にどこから入ったか: "csv"（応募CSV）/ "webhook"（応募通知API）
+  source      String   @default("csv")
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -465,4 +472,13 @@ model JobArticleSnapshot {
   capturedAt    DateTime   @default(now())
 
   @@index([articleId, capturedAt])
+}
+
+// =====================================================================
+// 外部連携の状態（最後に取り込んだCSVの更新日時など）。キーと値だけの小さな表
+// =====================================================================
+model SyncState {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

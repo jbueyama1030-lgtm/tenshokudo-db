@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 
 type ImportResult = {
   success: number
+  created: number
+  updated: number
   skip: number
   error: number
   shifted: number
@@ -154,7 +156,7 @@ export default function ApplicationsImportPage() {
                 </div>
               </div>
               <div className="mt-3 text-xs text-gray-500">
-                洗い替えで削除した既存データ: {result.deleted} 件
+                新しく追加: {result.created} 件 ／ 更新（ステータスの変化など）: {result.updated} 件 ／ CSVから消えたため削除: {result.deleted} 件
               </div>
               {result.error > 0 && (
                 <div className="mt-3 text-sm text-red-600">エラー: {result.error} 件</div>

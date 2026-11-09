@@ -6,15 +6,20 @@ import { extractPref, UNKNOWN_PREF } from "@/lib/area"
 /**
  * 応募明細CSVの取り込み。
  *
- * 【方式】
- * CSVに含まれる年月のデータを削除してから入れ直す「洗い替え」。
- * 応募のステータスは後から変わる（未対応→面接設定済み→入社）ため、
- * 追加ではなく置き換えにして常に最新の状態を反映する。
+ * 【方式】差分で更新する
+ * CSVの各行を既存の応募と突き合わせ、無ければ追加、変わっていれば更新する。
+ * 突き合わせは「応募ID」列があればそれで、無ければ（企業ID・応募日時・流入）で行う。
+ * 応募のステータスは後から変わる（未対応→面接設定済み→入社）ので、毎回最新の値で上書きする。
+ * 応募のIDが変わらないため、架電の記録などを応募にひもづけられる。
+ *
+ * CSVに含まれる年月のうち、CSVから消えた応募は削除する（管理画面で重複などを消した場合）。
+ * ただし作られてから PROTECT_RECENT_MS 以内の応募は消さない。
+ * 応募通知APIで先に入った応募が、まだCSVに載っていないだけの場合があるため。
  *
  * 【個人情報】
  * 電話番号は保存しない。ソルト付きSHA-256のハッシュのみ保存し、
  * UU（実人数）の名寄せにだけ使う。ハッシュから電話番号は復元できない。
- * ソルトは環境変数 PHONE_HASH_SALT。毎回全期間を洗い替えるので、変更しても次の取り込みで全件作り直される。
+ * ソルトは環境変数 PHONE_HASH_SALT。変更しても、次の取り込みで全件のハッシュが新しい値に更新される。
  *
  * 応募者の属性は集計に必要な最小限だけ保存する：
  * 年齢（数字）・性別・二種の有無・企業開封の有無・都道府県（住所から都道府県だけ）。
@@ -31,8 +36,13 @@ const SHRINK_GUARD_RATIO = 0.8
 // createMany の1回あたりの件数
 const BATCH_SIZE = 5000
 
+// CSVから消えていても削除しない猶予（通知APIで先に入り、まだCSVに載っていない応募を守る）
+const PROTECT_RECENT_MS = 3 * 60 * 60 * 1000
+
 export type ImportResult = {
-  success: number
+  success: number     // CSVの行のうち、DBに反映できた件数（追加＋更新＋変更なし）
+  created: number     // 新しく追加した件数
+  updated: number     // 既存の応募を更新した件数（ステータスの変化など）
   skip: number
   error: number
   shifted: number
@@ -161,6 +171,7 @@ export function parseOpened(raw: string): boolean | null {
 }
 
 type Parsed = {
+  externalId: string | null
   sourceCompanyId: string
   appliedAt: Date
   status: string
@@ -177,6 +188,22 @@ type Parsed = {
   month: number
 }
 
+/** 突き合わせ用のキー（企業ID・応募日時・流入）。DBの uniqueApplication と同じ組み合わせ */
+function tripleKey(sourceCompanyId: string, appliedAt: Date, inflow: string): string {
+  return sourceCompanyId + "|" + appliedAt.getTime() + "|" + inflow
+}
+
+/** 更新の対象にする項目（CSVの値で上書きする） */
+const SYNC_FIELDS = [
+  "externalId", "sourceCompanyId", "appliedAt", "year", "month", "status", "inflow", "entryType",
+  "phoneHash", "age", "gender", "hasLicense2", "companyOpened", "applicantPref", "companyRef",
+] as const
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime()
+  return (a ?? null) === (b ?? null)
+}
+
 /**
  * CSVテキストを取り込む。
  * skipGuard = true で件数チェックを無効化（手動で意図的に少量を入れる場合）。
@@ -187,8 +214,9 @@ export async function importApplicationsCsv(
   options: { skipGuard?: boolean } = {}
 ): Promise<ImportResult> {
   const results: ImportResult = {
-    success: 0, skip: 0, error: 0, shifted: 0, unmatched: 0, deleted: 0, hashed: 0, withAge: 0,
+    success: 0, created: 0, updated: 0, skip: 0, error: 0, shifted: 0, unmatched: 0, deleted: 0, hashed: 0, withAge: 0,
   }
+  const runAt = Date.now()
 
   const parsedCsv = parseCsv(csvText)
   if (parsedCsv.length < 2) {
@@ -200,6 +228,8 @@ export async function importApplicationsCsv(
   const iCompanyId = header.indexOf("企業ID")
   const iStatus = header.indexOf("ステータス")
   const iInflow = header.indexOf("流入")
+  // 応募IDは無くても取り込めるようにする（開発会社の対応前のCSVとの互換）
+  const iAppId = header.indexOf("応募ID")
   // 種別・電話番号は無くても取り込めるようにする（旧CSVとの互換）
   const iEntryType = header.indexOf("種別")
   const iPhone = header.indexOf("電話番号")
@@ -229,6 +259,7 @@ export async function importApplicationsCsv(
     const sourceCompanyId = normalizeCompanyId((r[iCompanyId] ?? "").trim())
     if (!rawDate && !sourceCompanyId) continue
 
+    const externalId = iAppId >= 0 ? ((r[iAppId] ?? "").trim() || null) : null
     const status = (r[iStatus] ?? "").trim()
     const inflow = (r[iInflow] ?? "").trim() || "未設定"
     const entryType = iEntryType >= 0 ? ((r[iEntryType] ?? "").trim() || null) : null
@@ -255,7 +286,7 @@ export async function importApplicationsCsv(
     if (age != null) results.withAge++
 
     parsed.push({
-      sourceCompanyId, appliedAt, status, inflow, entryType, phoneHash,
+      externalId, sourceCompanyId, appliedAt, status, inflow, entryType, phoneHash,
       age, gender, hasLicense2, companyOpened, applicantPref,
       companyRef, year, month,
     })
@@ -283,30 +314,80 @@ export async function importApplicationsCsv(
     }
   }
 
-  // --- 秒ずらし（同一キーの衝突をメモリ上で解決） ---
+  // --- 秒ずらし（同一キーの衝突をメモリ上で解決。CSVの並び順が同じなら毎回同じ結果になる） ---
   const usedKeys = new Set<string>()
   for (const p of parsed) {
-    let keyStr = p.sourceCompanyId + "|" + p.appliedAt.getTime() + "|" + p.inflow
+    let keyStr = tripleKey(p.sourceCompanyId, p.appliedAt, p.inflow)
     while (usedKeys.has(keyStr)) {
       p.appliedAt = new Date(p.appliedAt.getTime() + 1000)
       p.year = p.appliedAt.getFullYear()
       p.month = p.appliedAt.getMonth() + 1
-      keyStr = p.sourceCompanyId + "|" + p.appliedAt.getTime() + "|" + p.inflow
+      keyStr = tripleKey(p.sourceCompanyId, p.appliedAt, p.inflow)
       results.shifted++
     }
     usedKeys.add(keyStr)
   }
 
-  // --- 洗い替え：CSVに含まれる年月の既存データを削除 ---
-  const del = await prisma.applicationRecord.deleteMany({ where: { OR: targetMonths } })
-  results.deleted = del.count
+  // --- 既存の応募を読み込んで突き合わせる ---
+  const existingRows = await prisma.applicationRecord.findMany({
+    where: { OR: targetMonths },
+    select: {
+      id: true, createdAt: true,
+      externalId: true, sourceCompanyId: true, appliedAt: true, year: true, month: true, status: true,
+      inflow: true, entryType: true, phoneHash: true, age: true, gender: true, hasLicense2: true,
+      companyOpened: true, applicantPref: true, companyRef: true,
+    },
+  })
+  type Existing = (typeof existingRows)[number]
+  const byExternalId = new Map<string, Existing>()
+  const byTriple = new Map<string, Existing>()
+  for (const e of existingRows) {
+    if (e.externalId) byExternalId.set(e.externalId, e)
+    byTriple.set(tripleKey(e.sourceCompanyId, e.appliedAt, e.inflow), e)
+  }
 
-  // --- バッチ投入 ---
-  for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
-    const chunk = parsed.slice(i, i + BATCH_SIZE)
+  const seenIds = new Set<string>()
+  const toCreate: Parsed[] = []
+  const toUpdate: { id: string; data: Record<string, unknown> }[] = []
+
+  for (const p of parsed) {
+    const found =
+      (p.externalId ? byExternalId.get(p.externalId) : undefined) ??
+      byTriple.get(tripleKey(p.sourceCompanyId, p.appliedAt, p.inflow))
+
+    if (!found || seenIds.has(found.id)) { toCreate.push(p); continue }
+    seenIds.add(found.id)
+
+    const data: Record<string, unknown> = {}
+    for (const f of SYNC_FIELDS) {
+      const next = p[f]
+      // 応募IDは、CSVに無い（null）ときに既存の値を消さない
+      if (f === "externalId" && next == null) continue
+      if (!sameValue(found[f], next)) data[f] = next
+    }
+    if (Object.keys(data).length > 0) toUpdate.push({ id: found.id, data })
+    else results.success++
+  }
+
+  // --- 更新（ふだんはステータスが変わった応募だけなので少ない） ---
+  for (const u of toUpdate) {
+    try {
+      await prisma.applicationRecord.update({ where: { id: u.id }, data: u.data })
+      results.updated++
+      results.success++
+    } catch {
+      results.error++
+    }
+  }
+
+  // --- 追加 ---
+  for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
+    const chunk = toCreate.slice(i, i + BATCH_SIZE)
     try {
       const res = await prisma.applicationRecord.createMany({
         data: chunk.map(p => ({
+          externalId: p.externalId,
+          source: "csv",
           sourceCompanyId: p.sourceCompanyId,
           companyRef: p.companyRef,
           appliedAt: p.appliedAt,
@@ -324,10 +405,21 @@ export async function importApplicationsCsv(
         })),
         skipDuplicates: true,
       })
+      results.created += res.count
       results.success += res.count
+      results.skip += chunk.length - res.count
     } catch {
       results.error += chunk.length
     }
+  }
+
+  // --- CSVから消えた応募を削除（最近入ったものは守る） ---
+  const staleIds = existingRows
+    .filter(e => !seenIds.has(e.id) && runAt - e.createdAt.getTime() > PROTECT_RECENT_MS)
+    .map(e => e.id)
+  for (let i = 0; i < staleIds.length; i += BATCH_SIZE) {
+    const del = await prisma.applicationRecord.deleteMany({ where: { id: { in: staleIds.slice(i, i + BATCH_SIZE) } } })
+    results.deleted += del.count
   }
 
   return results

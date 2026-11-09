@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
-import { PrismaClient } from "@prisma/client"
+import { prisma } from "@/lib/prisma"
 import { importApplicationsCsv, decodeCsv } from "@/lib/importApplications"
 
-const prisma = new PrismaClient()
-
 export const maxDuration = 300
+
+/** 前回取り込んだCSVの更新日時（Last-Modified）を覚えておくキー */
+const LAST_MODIFIED_KEY = "entryCsv.lastModified"
 
 /**
  * 応募明細の自動取り込み（cronから叩く）。
@@ -12,8 +13,13 @@ export const maxDuration = 300
  * 認証: Authorization: Bearer <CRON_SECRET>
  * 取得元: ENTRY_CSV_URL（Basic認証は ENTRY_CSV_USER / ENTRY_CSV_PASS）
  *
- * 転職道側で毎日深夜0〜1時にCSVが生成される（固定ファイル名・上書き）。
- * こちらはその後（朝3〜4時想定）に実行する。
+ * 転職道側で、営業時間中（8〜21時）は1時間ごと、ほかに深夜1回CSVが生成される（固定ファイル名・上書き）。
+ * こちらは生成の少し後（毎時10分など）に実行する。
+ * CSVが前回から更新されていなければ（Last-Modified が同じなら）取り込みを省く。
+ * 強制的に取り込みたいときは ?force=1 を付ける。
+ *
+ * 新しい応募の大半は応募通知API（/api/webhooks/applications）で先に届く。
+ * この取り込みは、通知の取りこぼしを埋めることと、その後の進捗（ステータス）を反映するためのもの。
  */
 export async function POST(req: Request) {
   // --- 認証 ---
@@ -31,10 +37,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "ENTRY_CSV_URL が未設定です" }, { status: 500 })
   }
 
+  const force = new URL(req.url).searchParams.get("force") === "1"
   const startedAt = Date.now()
 
   // --- CSV取得 ---
   let csvText: string
+  let lastModified: string | null = null
   try {
     const headers: Record<string, string> = {
       // プログラムからのアクセスがUser-Agentで弾かれることがあるため明示する
@@ -54,6 +62,17 @@ export async function POST(req: Request) {
         { status: 502 }
       )
     }
+
+    // 前回と同じファイルなら取り込まない
+    lastModified = res.headers.get("last-modified")
+    if (!force && lastModified) {
+      const prev = await prisma.syncState.findUnique({ where: { key: LAST_MODIFIED_KEY } })
+      if (prev?.value === lastModified) {
+        await res.body?.cancel()
+        return NextResponse.json({ ok: true, skipped: "CSVは前回から更新されていません", lastModified })
+      }
+    }
+
     const buf = Buffer.from(await res.arrayBuffer())
     if (buf.length === 0) {
       return NextResponse.json({ error: "取得したCSVが空です" }, { status: 502 })
@@ -75,13 +94,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, elapsed, ...result }, { status: 400 })
   }
 
+  // 取り込めたときだけ更新日時を覚える（失敗したら次回もう一度取り込む）
+  if (lastModified) {
+    await prisma.syncState.upsert({
+      where: { key: LAST_MODIFIED_KEY },
+      update: { value: lastModified },
+      create: { key: LAST_MODIFIED_KEY, value: lastModified },
+    })
+  }
+
   console.log(
-    "[cron] 応募明細の取り込み完了: 成功 " + result.success +
+    "[cron] 応募明細の取り込み完了: 追加 " + result.created +
+    " / 更新 " + result.updated +
     " / 削除 " + result.deleted +
     " / スキップ " + result.skip +
     " / 未マッチ " + result.unmatched +
     " / " + elapsed + "秒"
   )
 
-  return NextResponse.json({ ok: true, elapsed, ...result })
+  return NextResponse.json({ ok: true, elapsed, lastModified, ...result })
 }
