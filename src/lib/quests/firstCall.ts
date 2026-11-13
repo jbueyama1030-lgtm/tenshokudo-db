@@ -251,3 +251,27 @@ export async function recordFirstCallResult(
   if (nextQuestId === undefined) return { ok: false, status: 409, error: "このクエストはもう完了しています" }
   return { ok: true, nextQuestId }
 }
+
+// ===== 担当替え =====
+
+/**
+ * 企業の担当営業・営業補佐が変わったときに、その企業の対応待ちクエストの担当を付け替える。
+ * 完了したクエストは、対応した人の記録として残すため触らない。
+ */
+export async function syncOpenQuestAssignees(companyId: string): Promise<number> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { userId: true, assistantUserId: true },
+  })
+  if (!company) return 0
+  const ids = Array.from(new Set([company.userId, company.assistantUserId].filter((v): v is string => !!v)))
+
+  const open = await prisma.quest.findMany({ where: { companyId, status: "open" }, select: { id: true } })
+  for (const q of open) {
+    await prisma.quest.update({
+      where: { id: q.id },
+      data: { assignees: { set: ids.map(id => ({ id })) } },
+    })
+  }
+  return open.length
+}

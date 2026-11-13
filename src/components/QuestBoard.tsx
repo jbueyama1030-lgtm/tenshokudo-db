@@ -1,40 +1,47 @@
 // 置き場所: src/components/QuestBoard.tsx
 // 自分のクエスト画面の本体。スマホで片手で使えるよう、ボタンは大きめ（高さ44px以上）にしている。
+// 同じ応募の「初回電話」と「かけ直し」は1枚のカードにまとめ、終わった回は履歴として中に並べる。
 "use client"
 
 import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 
-type Quest = {
-  id: string
-  type: string
+type Application = {
+  externalId: string | null
+  appliedAt: string
+  entryType: string | null
+  inflow: string
   status: string
-  attempt: number
-  dueAt: string
-  company: { id: string; name: string } | null
-  application: {
-    externalId: string | null
-    appliedAt: string
-    entryType: string | null
-    inflow: string
-    status: string
-    age: number | null
-    gender: string | null
-    hasLicense2: boolean | null
-    applicantPref: string | null
-  } | null
-  assignees: { id: string; name: string; role: string }[]
-  lockedBy: { id: string; name: string } | null
-  lockedAt: string | null
-  result: string | null
-  resultLabel: string | null
-  resultNote: string | null
-  doneAt: string | null
-  doneBy: { id: string; name: string } | null
-  canAct: boolean
+  age: number | null
+  gender: string | null
+  hasLicense2: boolean | null
+  applicantPref: string | null
 }
 
-type ListResponse = { me: string; now: string; myDoneThisWeek: number; quests: Quest[] }
+type Item = {
+  key: string
+  company: { id: string; name: string } | null
+  application: Application | null
+  assignees: { id: string; name: string; role: string }[]
+  current: {
+    id: string
+    attempt: number
+    dueAt: string
+    lockedBy: { id: string; name: string } | null
+    lockedAt: string | null
+    canAct: boolean
+  } | null
+  history: {
+    attempt: number
+    result: string | null
+    resultLabel: string | null
+    resultNote: string | null
+    doneAt: string | null
+    doneBy: { id: string; name: string } | null
+  }[]
+}
+
+type ListResponse = { me: string; now: string; myDoneThisWeek: number; items: Item[] }
 
 // 人が選ぶ結果（サーバー側の FIRST_CALL_RESULTS と同じ並び）
 const RESULTS: { key: string; label: string; primary?: boolean }[] = [
@@ -67,13 +74,17 @@ function dueBadge(dueIso: string, now: number): { label: string; cls: string; ov
   return { label: dt(dueIso) + " まで", cls: "bg-gray-100 text-gray-600", overdue: false, today: false }
 }
 
-function applicantSummary(a: NonNullable<Quest["application"]>): string {
+function applicantSummary(a: Application): string {
   return [
     a.age != null ? a.age + "歳" : null,
     a.gender,
     a.hasLicense2 === true ? "二種あり" : a.hasLicense2 === false ? "二種なし" : null,
     a.applicantPref,
   ].filter(Boolean).join("・")
+}
+
+function attemptName(n: number): string {
+  return n >= 2 ? "かけ直し（" + n + "回目）" : "初回電話"
 }
 
 export default function QuestBoard({ userName }: { userName: string }) {
@@ -108,54 +119,51 @@ export default function QuestBoard({ userName }: { userName: string }) {
 
   const setError = (id: string, msg: string) => setErrors(e => ({ ...e, [id]: msg }))
 
-  const lock = async (q: Quest) => {
-    setBusyId(q.id)
-    setError(q.id, "")
-    const res = await fetch("/api/quests/" + q.id + "/lock", { method: "POST" })
+  const lock = async (questId: string) => {
+    setBusyId(questId)
+    setError(questId, "")
+    const res = await fetch("/api/quests/" + questId + "/lock", { method: "POST" })
     if (!res.ok) {
       const e = await res.json().catch(() => null)
-      setError(q.id, e?.error ?? "対応中にできませんでした")
+      setError(questId, e?.error ?? "対応中にできませんでした")
     }
     await load()
     setBusyId(null)
   }
 
-  const unlock = async (q: Quest) => {
-    setBusyId(q.id)
-    await fetch("/api/quests/" + q.id + "/lock", { method: "DELETE" })
+  const unlock = async (questId: string) => {
+    setBusyId(questId)
+    await fetch("/api/quests/" + questId + "/lock", { method: "DELETE" })
     setPendingNotNeeded(null)
     await load()
     setBusyId(null)
   }
 
-  const submit = async (q: Quest, result: string) => {
-    const note = notes[q.id] ?? ""
+  const submit = async (item: Item, questId: string, result: string) => {
+    const note = notes[questId] ?? ""
     if (result === "not_needed" && !note.trim()) {
-      setPendingNotNeeded(q.id)
-      setError(q.id, "電話不要の理由を一言入れてから、もう一度押してください")
+      setPendingNotNeeded(questId)
+      setError(questId, "電話不要の理由を一言入れてから、もう一度押してください")
       return
     }
-    setBusyId(q.id)
-    setError(q.id, "")
-    const res = await fetch("/api/quests/" + q.id + "/result", {
+    setBusyId(questId)
+    setError(questId, "")
+    const res = await fetch("/api/quests/" + questId + "/result", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ result, note }),
     })
     if (!res.ok) {
       const e = await res.json().catch(() => null)
-      setError(q.id, e?.error ?? "結果を保存できませんでした")
+      setError(questId, e?.error ?? "結果を保存できませんでした")
       setBusyId(null)
       return
     }
     const d = await res.json().catch(() => null)
-    setFlash(
-      d?.nextQuestId
-        ? (q.company?.name ?? "") + "：不在のため、翌営業日にかけ直しのクエストを出しました"
-        : (q.company?.name ?? "") + "：結果を記録しました",
-    )
+    const name = item.company?.name ?? ""
+    setFlash(d?.nextQuestId ? name + "：不在のため、翌営業日にかけ直しを出しました" : name + "：結果を記録しました")
     setTimeout(() => setFlash(""), 5000)
-    setNotes(n => ({ ...n, [q.id]: "" }))
+    setNotes(n => ({ ...n, [questId]: "" }))
     setPendingNotNeeded(null)
     await load()
     setBusyId(null)
@@ -163,9 +171,10 @@ export default function QuestBoard({ userName }: { userName: string }) {
 
   // 期日の判定はサーバーの時刻を使う（読み直すたびに更新される）
   const now = data ? new Date(data.now).getTime() : 0
-  const quests = data?.quests ?? []
-  const overdueCount = view === "open" ? quests.filter(q => new Date(q.dueAt).getTime() < now).length : 0
-  const todayCount = view === "open" ? quests.filter(q => dueBadge(q.dueAt, now).today).length : 0
+  const items = data?.items ?? []
+  const openItems = view === "open" ? items.filter(i => i.current) : []
+  const overdueCount = openItems.filter(i => new Date(i.current!.dueAt).getTime() < now).length
+  const todayCount = openItems.filter(i => dueBadge(i.current!.dueAt, now).today).length
 
   const tabCls = (on: boolean) =>
     "flex-1 min-h-[40px] rounded-lg text-sm " + (on ? "bg-white text-gray-900 font-bold shadow-sm" : "text-gray-500")
@@ -215,34 +224,36 @@ export default function QuestBoard({ userName }: { userName: string }) {
 
       <div className="px-3 pt-3 space-y-3">
         {!data && !loadError && <p className="text-sm text-gray-400 text-center py-10">読み込み中...</p>}
-        {data && quests.length === 0 && (
+        {data && items.length === 0 && (
           <p className="text-sm text-gray-400 text-center py-10">
             {view === "open" ? "対応待ちのクエストはありません" : "この7日間に完了したクエストはありません"}
           </p>
         )}
 
-        {quests.map(q => {
-          const badge = dueBadge(q.dueAt, now)
-          const lockedByMe = q.lockedBy?.id === data?.me
-          const lockedByOther = !!q.lockedBy && !lockedByMe
-          const a = q.application
-          const busy = busyId === q.id
+        {items.map(item => {
+          const cur = item.current
+          const badge = cur ? dueBadge(cur.dueAt, now) : null
+          const lockedByMe = !!cur?.lockedBy && cur.lockedBy.id === data?.me
+          const lockedByOther = !!cur?.lockedBy && !lockedByMe
+          const a = item.application
+          const busy = !!cur && busyId === cur.id
+          const final = item.history[item.history.length - 1]
           return (
-            <article key={q.id} className={"bg-white rounded-2xl border p-3 " + (view === "open" && badge.overdue ? "border-red-200" : "border-gray-200")}>
+            <article key={item.key} className={"bg-white rounded-2xl border p-3 " + (badge?.overdue ? "border-red-200" : "border-gray-200")}>
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0">
-                  {q.company ? (
-                    <Link href={"/companies/" + q.company.id} className="text-base font-bold text-gray-900 hover:underline">{q.company.name}</Link>
+                  {item.company ? (
+                    <Link href={"/companies/" + item.company.id} className="text-base font-bold text-gray-900 hover:underline">{item.company.name}</Link>
                   ) : <span className="text-base font-bold text-gray-900">（企業なし）</span>}
                   <div className="text-xs text-gray-600 mt-0.5">
-                    {q.attempt >= 2 ? "かけ直し（2回目）" : "新しい応募に初回電話"}
+                    {cur ? attemptName(cur.attempt) : "初回電話（完了）"}
                   </div>
                 </div>
-                {view === "open" ? (
+                {cur && badge ? (
                   <span className={"shrink-0 text-[11px] font-bold px-2 py-1 rounded-full " + badge.cls}>{badge.label}</span>
-                ) : (
-                  <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-green-100 text-green-800">{q.resultLabel}</span>
-                )}
+                ) : final?.resultLabel ? (
+                  <span className="shrink-0 text-[11px] font-bold px-2 py-1 rounded-full bg-green-100 text-green-800">{final.resultLabel}</span>
+                ) : null}
               </div>
 
               {a && (
@@ -256,67 +267,80 @@ export default function QuestBoard({ userName }: { userName: string }) {
                 </div>
               )}
 
-              <div className="text-[11px] text-gray-400 mt-2">
-                {q.assignees.map(p => p.role + " " + p.name).join("　")}
-              </div>
-
-              {view === "done" ? (
-                <div className="text-xs text-gray-600 mt-2">
-                  {q.doneBy?.name ?? "-"}・{q.doneAt ? dt(q.doneAt) : ""}
-                  {q.resultNote && <div className="mt-1 text-gray-800 whitespace-pre-wrap">「{q.resultNote}」</div>}
-                </div>
-              ) : lockedByOther ? (
-                <div className="mt-3 rounded-xl bg-gray-100 text-gray-600 text-sm px-3 py-3 text-center">
-                  🔒 {q.lockedBy?.name}さんが対応中（{q.lockedAt ? fmtTime.format(new Date(q.lockedAt)) : ""}〜）
-                </div>
-              ) : lockedByMe ? (
-                <div className="mt-3">
-                  <div className="text-xs text-gray-500 mb-1.5">電話の結果を選ぶ</div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {RESULTS.map(r => (
-                      <button
-                        key={r.key}
-                        type="button"
-                        disabled={busy}
-                        onClick={() => submit(q, r.key)}
-                        className={
-                          "min-h-[44px] rounded-xl text-xs px-2 disabled:opacity-50 " +
-                          (r.primary ? "bg-[#185FA5] text-white font-bold" : "bg-white text-gray-700 border border-gray-300")
-                        }
-                      >
-                        {r.label}
-                      </button>
-                    ))}
-                  </div>
-                  <label htmlFor={"note-" + q.id} className="block text-[11px] text-gray-500 mt-2">
-                    一言メモ{pendingNotNeeded === q.id ? "（電話不要の理由・必須）" : "（任意）"}
-                  </label>
-                  <input
-                    id={"note-" + q.id}
-                    type="text"
-                    value={notes[q.id] ?? ""}
-                    onChange={e => setNotes(n => ({ ...n, [q.id]: e.target.value }))}
-                    placeholder="例：明日の面接を企業に依頼済み"
-                    className="w-full min-h-[40px] mt-1 border border-gray-300 rounded-xl px-3 text-sm text-gray-900"
-                  />
-                  <button type="button" disabled={busy} onClick={() => unlock(q)} className="w-full mt-2 min-h-[40px] text-xs text-gray-500">
-                    やめる（ほかの人が対応できるように戻す）
-                  </button>
-                </div>
-              ) : q.canAct ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => lock(q)}
-                  className="w-full mt-3 min-h-[48px] rounded-xl bg-[#185FA5] text-white text-sm font-bold disabled:opacity-50"
-                >
-                  電話する（自分を対応中にする）
-                </button>
-              ) : (
-                <p className="mt-2 text-[11px] text-gray-400">担当ではないため、見るだけです</p>
+              {/* 終わった回の記録 */}
+              {item.history.length > 0 && (
+                <ol className="mt-2 space-y-1">
+                  {item.history.map(h => (
+                    <li key={h.attempt} className="text-xs text-gray-600 flex gap-2">
+                      <span className="shrink-0 text-gray-400 w-12">{h.attempt}回目</span>
+                      <span className="min-w-0">
+                        <span className="font-medium text-gray-800">{h.resultLabel}</span>
+                        <span className="text-gray-400">（{h.doneBy?.name ?? "-"}・{h.doneAt ? dt(h.doneAt) : ""}）</span>
+                        {h.resultNote && <span className="block text-gray-700">「{h.resultNote}」</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
               )}
 
-              {errors[q.id] && <p className="text-xs text-red-600 mt-2">{errors[q.id]}</p>}
+              <div className="text-[11px] text-gray-400 mt-2">
+                {item.assignees.map(p => p.role + " " + p.name).join("　")}
+              </div>
+
+              {cur && (
+                lockedByOther ? (
+                  <div className="mt-3 rounded-xl bg-gray-100 text-gray-600 text-sm px-3 py-3 text-center">
+                    🔒 {cur.lockedBy?.name}さんが対応中（{cur.lockedAt ? fmtTime.format(new Date(cur.lockedAt)) : ""}〜）
+                  </div>
+                ) : lockedByMe ? (
+                  <div className="mt-3">
+                    <div className="text-xs text-gray-500 mb-1.5">電話の結果を選ぶ</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {RESULTS.map(r => (
+                        <button
+                          key={r.key}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => submit(item, cur.id, r.key)}
+                          className={
+                            "min-h-[44px] rounded-xl text-xs px-2 disabled:opacity-50 " +
+                            (r.primary ? "bg-[#185FA5] text-white font-bold" : "bg-white text-gray-700 border border-gray-300")
+                          }
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                    <label htmlFor={"note-" + cur.id} className="block text-[11px] text-gray-500 mt-2">
+                      一言メモ{pendingNotNeeded === cur.id ? "（電話不要の理由・必須）" : "（任意）"}
+                    </label>
+                    <input
+                      id={"note-" + cur.id}
+                      type="text"
+                      value={notes[cur.id] ?? ""}
+                      onChange={e => setNotes(n => ({ ...n, [cur.id]: e.target.value }))}
+                      placeholder="例：明日の面接を企業に依頼済み"
+                      className="w-full min-h-[40px] mt-1 border border-gray-300 rounded-xl px-3 text-sm text-gray-900"
+                    />
+                    <button type="button" disabled={busy} onClick={() => unlock(cur.id)} className="w-full mt-2 min-h-[40px] text-xs text-gray-500">
+                      やめる（ほかの人が対応できるように戻す）
+                    </button>
+                  </div>
+                ) : cur.canAct ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => lock(cur.id)}
+                    className="w-full mt-3 min-h-[48px] rounded-xl bg-[#185FA5] text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    電話する（自分を対応中にする）
+                  </button>
+                ) : (
+                  <p className="mt-2 text-[11px] text-gray-400">担当ではないため、見るだけです</p>
+                )
+              )}
+
+              {cur && errors[cur.id] && <p className="text-xs text-red-600 mt-2">{errors[cur.id]}</p>}
             </article>
           )
         })}

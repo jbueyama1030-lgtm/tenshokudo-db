@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
 import { canEditCompanyFull, canEditReferralOnly, canDeleteCompany, canSetAssistant, isInAgencyScope, REFERRAL_FIELDS } from "@/lib/permissions"
+import { syncOpenQuestAssignees } from "@/lib/quests/firstCall"
 
 const prisma = new PrismaClient()
 
@@ -188,6 +189,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       assistant: { select: { id: true, name: true } },
     },
   })
+
+  // 担当営業・営業補佐が変わったら、対応待ちのクエストの担当も付け替える
+  if (company.userId !== existing.userId || company.assistantUserId !== existing.assistantUserId) {
+    try {
+      await syncOpenQuestAssignees(id)
+    } catch (e) {
+      console.error("[companies] クエストの担当の付け替えに失敗しました", e)
+    }
+  }
 
   return NextResponse.json(company)
 }
