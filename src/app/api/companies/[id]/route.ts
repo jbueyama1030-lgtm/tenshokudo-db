@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { PrismaClient } from "@prisma/client"
-import { canEditCompanyFull, canEditReferralOnly, canDeleteCompany, isInAgencyScope, REFERRAL_FIELDS } from "@/lib/permissions"
+import { canEditCompanyFull, canEditReferralOnly, canDeleteCompany, canSetAssistant, isInAgencyScope, REFERRAL_FIELDS } from "@/lib/permissions"
 
 const prisma = new PrismaClient()
 
@@ -14,6 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     where: { id },
     include: {
       user: { select: { id: true, name: true } },
+      assistant: { select: { id: true, name: true } },
       monthlyRecords: {
         orderBy: [{ year: "asc" }, { month: "asc" }],
       },
@@ -45,8 +46,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
-  const canFull = canEditCompanyFull(session, existing.userId)
-  const canReferral = canEditReferralOnly(session, existing.userId)
+  const canFull = canEditCompanyFull(session, existing.userId, existing.assistantUserId)
+  const canReferral = canEditReferralOnly(session, existing.userId, existing.assistantUserId)
 
   if (!canFull && !canReferral) {
     return NextResponse.json({ error: "この企業を編集する権限がありません" }, { status: 403 })
@@ -92,6 +93,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // 担当者（全項目編集できる人のみ、かつ営業は変更不可）
   if (has("userId") && canFull && !session.user.roles?.includes("sales")) {
     data.userId = payload.userId
+  }
+
+  // 営業補佐（役員と担当営業だけが変更できる。それ以外の人から届いた値は無視する）
+  // 画面は企業の全項目を送ってくるため、変わっていないときは何もしない
+  if (has("assistantUserId") && canFull && canSetAssistant(session, existing.userId)) {
+    const nextAssistant = typeof payload.assistantUserId === "string" && payload.assistantUserId ? payload.assistantUserId : null
+    if (nextAssistant !== existing.assistantUserId) {
+      if (nextAssistant) {
+        const target = await prisma.user.findUnique({
+          where: { id: nextAssistant },
+          select: { isActive: true, roles: true, role: true, agencyId: true },
+        })
+        const targetRoles = target ? (target.roles.length > 0 ? target.roles : [target.role]) : []
+        if (
+          !target || !target.isActive ||
+          !(targetRoles.includes("sales") || targetRoles.includes("admin")) ||
+          // 自社の企業には自社の人、代理店の企業にはその代理店の人だけ
+          (target.agencyId ?? null) !== (existing.agencyId ?? null)
+        ) {
+          return NextResponse.json({ error: "この人は営業補佐に登録できません" }, { status: 400 })
+        }
+      }
+      data.assistantUserId = nextAssistant
+    }
+  }
+
+  // 担当営業と補佐が同じ人にならないようにする（担当を補佐の人に変えたときなど）
+  const finalOwner = (data.userId as string | undefined) ?? existing.userId
+  const finalAssistant = "assistantUserId" in data ? (data.assistantUserId as string | null) : existing.assistantUserId
+  if (finalAssistant && finalAssistant === finalOwner) {
+    data.assistantUserId = null
   }
 
   // 数値系
@@ -151,7 +183,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const company = await prisma.company.update({
     where: { id },
     data,
-    include: { user: { select: { id: true, name: true } } },
+    include: {
+      user: { select: { id: true, name: true } },
+      assistant: { select: { id: true, name: true } },
+    },
   })
 
   return NextResponse.json(company)

@@ -50,6 +50,9 @@ export type CompanyRow = {
   phone: string | null
   userId: string
   userName: string
+  /** 営業補佐（いなければ null） */
+  assistantUserId: string | null
+  assistantName: string | null
   temperature: string | null
   hasReferralContract: boolean
   workplaceCertLevel: number
@@ -101,7 +104,9 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
   const companies = await prisma.company.findMany({
     where: {
       ...companyScopeFilter(session),
-      ...(p.user !== "all" ? { userId: p.user } : {}),
+      // 担当者で絞るときは、その人が営業補佐を任されている企業も含める
+      // （検索の OR とぶつからないよう AND の中に入れる）
+      ...(p.user !== "all" ? { AND: [{ OR: [{ userId: p.user }, { assistantUserId: p.user }] }] } : {}),
       ...(p.status !== "all" ? { status: p.status } : {}),
       ...(p.extraWhere ?? {}),
       ...(p.ids && p.ids.length > 0 ? { id: { in: p.ids } } : {}),
@@ -121,6 +126,8 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       temperature: true, hasReferralContract: true, workplaceCertLevel: true,
       nextAction: true, nextActionDate: true, vehicleCount: true, adoptionChallenge: true, updatedAt: true,
       user: { select: { name: true, roles: true, role: true } },
+      assistantUserId: true,
+      assistant: { select: { name: true } },
       contractPeriods: { select: { contractStart: true, contractEnd: true, contractRenewal: true } },
       jobArticle: { select: { pageUpdatedAt: true, isListed: true } },
       corporateGroup: { select: { id: true, name: true } },
@@ -222,6 +229,8 @@ export async function buildCompanyList(session: SessionLike, p: CompanyListParam
       phone: c.phone,
       userId: c.userId,
       userName: c.user.name,
+      assistantUserId: c.assistantUserId,
+      assistantName: c.assistant?.name ?? null,
       temperature: c.temperature,
       hasReferralContract: c.hasReferralContract,
       workplaceCertLevel: c.workplaceCertLevel ?? 0,

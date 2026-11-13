@@ -14,6 +14,7 @@ import {
   canEditCompanyFull,
   canEditReferralOnly,
   canDeleteCompany,
+  canSetAssistant,
   canCreateTask,
   isProduction,
   isAgencyUser,
@@ -55,6 +56,9 @@ type Company = {
   status: string
   userId: string
   user: { id: string; name: string }
+  // 営業補佐（いなければ null）
+  assistantUserId: string | null
+  assistant: { id: string; name: string } | null
   contactPerson: string | null
   contactPosition: string | null
   phone: string | null
@@ -113,7 +117,7 @@ type Company = {
   condNote: string | null
 }
 
-type User = { id: string; name: string }
+type User = { id: string; name: string; roles?: string[]; role?: string; isActive?: boolean }
 
 /** 企業詳細のタブ */
 type DetailTab = "overview" | "contract" | "results" | "referral" | "production"
@@ -571,9 +575,16 @@ export default function CompanyDetailPage() {
 
   // ===== 権限判定（roles ベース） =====
   const roles = getRoles(session)
-  const canFull = canEditCompanyFull(session, company.userId)
-  const canReferral = canEditReferralOnly(session, company.userId)
+  const canFull = canEditCompanyFull(session, company.userId, company.assistantUserId)
+  const canReferral = canEditReferralOnly(session, company.userId, company.assistantUserId)
   const canDelete = canDeleteCompany(session, company.userId)
+  // 営業補佐を変えられるのは、役員とその企業の担当営業だけ
+  const canAssist = canSetAssistant(session, company.userId)
+  // 補佐の候補：在籍中の営業・管理者のうち、担当営業以外
+  const assistantCandidates = users.filter(u => {
+    const r = u.roles && u.roles.length > 0 ? u.roles : u.role ? [u.role] : []
+    return u.isActive !== false && (r.includes("sales") || r.includes("admin")) && u.id !== (form.userId ?? company.userId)
+  })
   const canTask = canCreateTask(session)
   const productionOnly = isProduction(session) && !canFull && !canReferral
 
@@ -768,6 +779,7 @@ export default function CompanyDetailPage() {
                   <span className="text-gray-300 mx-1.5">/</span>
                   {company.annualHiringTarget ?? "-"}<span className="text-xs font-normal text-gray-400 ml-0.5">名</span>
                 </div>
+                {company.assistant && <div className="text-[11px] text-gray-400">補佐 {company.assistant.name}</div>}
               </div>
             </div>
           </div>
@@ -827,6 +839,19 @@ export default function CompanyDetailPage() {
                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 ) : <p className="text-sm text-gray-900">{company.user.name}</p>}
+              </Field>
+              <Field label="営業補佐">
+                {editing && canAssist ? (
+                  <select value={form.assistantUserId ?? ""} onChange={e => set("assistantUserId", e.target.value || null)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900">
+                    <option value="">なし</option>
+                    {assistantCandidates.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                ) : (
+                  <p className="text-sm text-gray-900">
+                    {company.assistant?.name ?? "-"}
+                    {editing && !canAssist && <span className="block text-[11px] text-gray-400">変更できるのは担当営業と役員です</span>}
+                  </p>
+                )}
               </Field>
               <Field label="企業担当者">
                 {editing ? <input value={form.contactPerson ?? ""} onChange={e => set("contactPerson", e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900" placeholder="例: 山田太郎" /> : <p className="text-sm text-gray-900">{company.contactPerson ?? "-"}</p>}

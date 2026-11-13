@@ -101,17 +101,35 @@ export function canCreateCompany(session: SessionLike): boolean {
 }
 
 // その企業を「全項目」編集できるか
-export function canEditCompanyFull(session: SessionLike, companyUserId: string): boolean {
+// assistantUserId: その企業の営業補佐。補佐も担当営業と同じく編集できる
+export function canEditCompanyFull(
+  session: SessionLike,
+  companyUserId: string,
+  assistantUserId?: string | null,
+): boolean {
   if (isAdmin(session)) return true
-  // 営業は自分の担当企業のみ
-  if (isSales(session) && session?.user?.id === companyUserId) return true
+  const me = session?.user?.id
+  if (!me || !isSales(session)) return false
+  // 営業は自分の担当企業と、補佐を任されている企業のみ
+  if (me === companyUserId) return true
+  if (assistantUserId && me === assistantUserId) return true
   return false
 }
 
+// その企業の営業補佐を登録・変更できるか（役員と、その企業の担当営業だけ。補佐本人は不可）
+export function canSetAssistant(session: SessionLike, companyUserId: string): boolean {
+  if (isAdmin(session)) return true
+  return isSales(session) && !!session?.user?.id && session.user.id === companyUserId
+}
+
 // その企業の「人材紹介項目のみ」編集できるか
-export function canEditReferralOnly(session: SessionLike, companyUserId: string): boolean {
+export function canEditReferralOnly(
+  session: SessionLike,
+  companyUserId: string,
+  assistantUserId?: string | null,
+): boolean {
   // 全項目編集できる人は当然できる
-  if (canEditCompanyFull(session, companyUserId)) return true
+  if (canEditCompanyFull(session, companyUserId, assistantUserId)) return true
   // advisor は担当に関係なく紹介項目だけ編集可
   return isAdvisor(session)
 }

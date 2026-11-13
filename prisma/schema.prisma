@@ -22,7 +22,9 @@ model User {
   agency    Agency?   @relation(fields: [agencyId], references: [id])
 
   createdAt DateTime  @default(now())
-  companies Company[]
+  companies Company[] @relation("CompanyOwner")
+  // 営業補佐として見ている企業
+  assistedCompanies Company[] @relation("CompanyAssistant")
   assignedTasks  ProductionTask[] @relation("TaskAssignee")
   subAssignedTasks ProductionTask[] @relation("TaskSubAssignees")
   requestedTasks ProductionTask[] @relation("TaskRequester")
@@ -38,7 +40,11 @@ model Company {
   name      String
   status    String  @default("approaching")
   userId    String
-  user      User    @relation(fields: [userId], references: [id])
+  user      User    @relation("CompanyOwner", fields: [userId], references: [id])
+
+  // 営業補佐（担当営業と一緒にこの企業を見る人。1社に1人まで。null = なし）
+  assistantUserId String?
+  assistant       User?   @relation("CompanyAssistant", fields: [assistantUserId], references: [id])
 
   // 担当代理店（null = 直販＝メーカー案件）
   agencyId  String?
@@ -154,6 +160,7 @@ model Company {
 
   @@index([agencyId])
   @@index([corporateGroupId])
+  @@index([assistantUserId])
 }
 
 // =====================================================================

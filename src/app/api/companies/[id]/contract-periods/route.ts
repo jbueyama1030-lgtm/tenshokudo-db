@@ -54,12 +54,12 @@ export async function POST(
   const { id } = await params
 
   // 掲載契約の編集は全項目編集権限に準じる
-  const company = await prisma.company.findUnique({ where: { id }, select: { userId: true, agencyId: true } })
+  const company = await prisma.company.findUnique({ where: { id }, select: { userId: true, assistantUserId: true, agencyId: true } })
   if (!company) return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 })
   if (!isInAgencyScope(session, company.agencyId)) {
     return NextResponse.json({ error: "企業が見つかりません" }, { status: 404 })
   }
-  if (!canEditCompanyFull(session, company.userId)) {
+  if (!canEditCompanyFull(session, company.userId, company.assistantUserId)) {
     return NextResponse.json({ error: "編集権限がありません" }, { status: 403 })
   }
 

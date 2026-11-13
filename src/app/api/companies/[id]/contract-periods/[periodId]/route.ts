@@ -21,7 +21,7 @@ async function assertCanEdit(
 ) {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
-    select: { userId: true, agencyId: true },
+    select: { userId: true, assistantUserId: true, agencyId: true },
   })
   if (!company) return { ok: false as const, status: 404, error: "企業が見つかりません" }
 
@@ -30,7 +30,7 @@ async function assertCanEdit(
     return { ok: false as const, status: 404, error: "企業が見つかりません" }
   }
 
-  if (!canEditCompanyFull(session, company.userId)) {
+  if (!canEditCompanyFull(session, company.userId, company.assistantUserId)) {
     return { ok: false as const, status: 403, error: "編集権限がありません" }
   }
 

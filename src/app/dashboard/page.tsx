@@ -70,11 +70,12 @@ export default async function DashboardPage() {
 
   const allContracted = await prisma.company.findMany({
     where: { status: "contracted" },
-    select: { id: true, monthlyFee: true, discountRate: true, contractStart: true, contractRenewal: true, name: true, nextActionDate: true, userId: true, user: { select: { id: true, name: true } } },
+    select: { id: true, monthlyFee: true, discountRate: true, contractStart: true, contractRenewal: true, name: true, nextActionDate: true, userId: true, assistantUserId: true, user: { select: { id: true, name: true } } },
   })
 
-  // アラート系は salesのときは自分担当だけに絞る
-  const alertScopeContracted = isAdmin ? allContracted : allContracted.filter(c => c.userId === userId)
+  // アラート系は salesのときは自分担当と、営業補佐を任されている企業だけに絞る
+  // （売上の集計は担当営業の実績なので、補佐の企業は含めない）
+  const alertScopeContracted = isAdmin ? allContracted : allContracted.filter(c => c.userId === userId || c.assistantUserId === userId)
 
   const allThisMonthRevenue = allContracted.reduce((sum, c) => {
     const base = c.monthlyFee ?? 0

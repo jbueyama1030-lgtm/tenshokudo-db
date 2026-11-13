@@ -56,6 +56,7 @@ type Detail = {
   negotiationMemo: string | null
   memo: string | null
   user: { id: string; name: string }
+  assistant: { id: string; name: string } | null
   monthlyRecords: { id: string; year: number; month: number; applyCount: number; hireCount: number }[]
 }
 
@@ -416,7 +417,10 @@ export default function CompanyListView({
                           </td>
                         </>
                       )}
-                      <td className="px-3 py-3 text-sm text-gray-600 whitespace-nowrap">{r.userName}</td>
+                      <td className="px-3 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        {r.userName}
+                        {r.assistantName && <div className="text-[11px] text-gray-400">補佐 {r.assistantName}</div>}
+                      </td>
                       <td className="px-3 py-3 text-xs text-gray-500 whitespace-nowrap">{ymd(r.updatedAt)}</td>
                       <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                         <a href={"/companies/" + r.id} className="inline-block text-xs font-medium text-blue-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 hover:border-blue-200">詳細</a>
@@ -565,6 +569,12 @@ function CompanyPanel({
               <span className="text-xs text-gray-400 pt-0.5">担当者</span>
               <span className="text-gray-900">{detail.user?.name ?? "-"}</span>
             </div>
+            {detail.assistant && (
+              <div className="grid grid-cols-[5.5rem_1fr] gap-2">
+                <span className="text-xs text-gray-400 pt-0.5">営業補佐</span>
+                <span className="text-gray-900">{detail.assistant.name}</span>
+              </div>
+            )}
 
             {!advisorMode && (
               <div className="grid grid-cols-[5.5rem_1fr] gap-2">
