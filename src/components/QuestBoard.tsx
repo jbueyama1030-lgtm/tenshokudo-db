@@ -246,7 +246,7 @@ export default function QuestBoard({ userName }: { userName: string }) {
                     <Link href={"/companies/" + item.company.id} className="text-base font-bold text-gray-900 hover:underline">{item.company.name}</Link>
                   ) : <span className="text-base font-bold text-gray-900">（企業なし）</span>}
                   <div className="text-xs text-gray-600 mt-0.5">
-                    {cur ? attemptName(cur.attempt) : "初回電話（完了）"}
+                    {cur ? attemptName(cur.attempt) : <>初回電話　<span className="font-bold text-gray-900">{final?.doneBy?.name ?? "-"}</span> さんが完了</>}
                   </div>
                 </div>
                 {cur && badge ? (
@@ -267,24 +267,27 @@ export default function QuestBoard({ userName }: { userName: string }) {
                 </div>
               )}
 
-              {/* 終わった回の記録 */}
+              {/* 終わった回の記録（誰が・いつ・どうだったか） */}
               {item.history.length > 0 && (
-                <ol className="mt-2 space-y-1">
+                <ol className="mt-2 divide-y divide-gray-100 border-y border-gray-100">
                   {item.history.map(h => (
-                    <li key={h.attempt} className="text-xs text-gray-600 flex gap-2">
-                      <span className="shrink-0 text-gray-400 w-12">{h.attempt}回目</span>
-                      <span className="min-w-0">
-                        <span className="font-medium text-gray-800">{h.resultLabel}</span>
-                        <span className="text-gray-400">（{h.doneBy?.name ?? "-"}・{h.doneAt ? dt(h.doneAt) : ""}）</span>
-                        {h.resultNote && <span className="block text-gray-700">「{h.resultNote}」</span>}
-                      </span>
+                    <li key={h.attempt} className="py-1.5 text-xs">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="shrink-0 text-gray-400">{h.attempt}回目</span>
+                        <span className="shrink-0 rounded-full bg-blue-50 text-blue-800 font-bold px-2 py-0.5">{h.doneBy?.name ?? "不明"}</span>
+                        <span className="text-gray-500">が電話 →</span>
+                        <span className="font-bold text-gray-900">{h.resultLabel}</span>
+                        <span className="ml-auto text-gray-400">{h.doneAt ? dt(h.doneAt) : ""}</span>
+                      </div>
+                      {h.resultNote && <div className="mt-0.5 text-gray-700">「{h.resultNote}」</div>}
                     </li>
                   ))}
                 </ol>
               )}
 
+              {/* 誰に出ているクエストか（対応した人とは別） */}
               <div className="text-[11px] text-gray-400 mt-2">
-                {item.assignees.map(p => p.role + " " + p.name).join("　")}
+                クエストの担当：{item.assignees.map(p => p.name + "（" + p.role + "）").join("・")}
               </div>
 
               {cur && (
