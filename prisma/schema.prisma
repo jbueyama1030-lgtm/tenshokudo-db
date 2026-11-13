@@ -25,6 +25,11 @@ model User {
   companies Company[] @relation("CompanyOwner")
   // 営業補佐として見ている企業
   assistedCompanies Company[] @relation("CompanyAssistant")
+
+  // クエスト
+  quests       Quest[] @relation("QuestAssignees")
+  questsLocked Quest[] @relation("QuestLockedBy")
+  questsDone   Quest[] @relation("QuestDoneBy")
   assignedTasks  ProductionTask[] @relation("TaskAssignee")
   subAssignedTasks ProductionTask[] @relation("TaskSubAssignees")
   requestedTasks ProductionTask[] @relation("TaskRequester")
@@ -142,6 +147,9 @@ model Company {
 
   // 応募明細（マーケ分析用）
   applicationRecords ApplicationRecord[]
+
+  // クエスト（初回電話など）
+  quests Quest[]
 
   // 契約期間（契約中/解約/再契約それぞれ1本）
   contractPeriods ContractPeriod[]
@@ -297,6 +305,9 @@ model ApplicationRecord {
 
   // 最初にどこから入ったか: "csv"（応募CSV）/ "webhook"（応募通知API）
   source      String   @default("csv")
+
+  // この応募から作られたクエスト（初回電話など）
+  quests      Quest[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -488,4 +499,66 @@ model SyncState {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ===== クエスト =====
+// 人がやる仕事を1件ずつ表す。最初は「応募者への初回電話」（type = "first_call"）だけ。
+// ルールはコード側（src/lib/quests）に置き、DBには結果と状態だけを持つ。
+model Quest {
+  id      String @id @default(cuid())
+  // 種類: "first_call"（応募者への初回電話）
+  type    String
+  // 状態: "open"（対応待ち）/ "done"（完了）/ "cancelled"（取り消し）
+  status  String @default("open")
+  // 何回目か（初回電話: 1 = 初回、2 = かけ直し）
+  attempt Int    @default(1)
+  // 期日（実際の時刻。日本時間の 18:00 など）
+  dueAt   DateTime
+
+  companyId     String?
+  company       Company?           @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  applicationId String?
+  application   ApplicationRecord? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  // 担当（担当営業と営業補佐など。誰が対応してもよい）
+  assignees User[] @relation("QuestAssignees")
+
+  // 「電話する」を押した人（二重電話を防ぐロック。30分で自動的に外れる）
+  lockedById String?
+  lockedBy   User?     @relation("QuestLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  lockedAt   DateTime?
+
+  // 結果: connected / absent / wrong_number / declined / company_contacted / not_needed / unreachable
+  result     String?
+  resultNote String?
+  doneById   String?
+  doneBy     User?     @relation("QuestDoneBy", fields: [doneById], references: [id], onDelete: SetNull)
+  doneAt     DateTime?
+
+  // チャットワークで知らせた日時（新着の通知・期日超過のリマインド）
+  notifiedAt DateTime?
+  remindedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, applicationId, attempt])
+  @@index([status, dueAt])
+  @@index([companyId])
+}
+
+// 自動化の設定（オン・オフと、始めた日時などのちょっとした値だけを持つ）
+model AutomationSetting {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  config    Json?
+  updatedAt DateTime @updatedAt
+}
+
+// 会社独自の休み（年末年始など）。土日と日本の祝日は自動で休みとして扱う
+model BusinessHoliday {
+  // "2026-12-30" の形
+  date      String   @id
+  name      String
+  createdAt DateTime @default(now())
 }

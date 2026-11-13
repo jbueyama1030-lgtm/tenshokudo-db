@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { importApplicationsCsv, decodeCsv } from "@/lib/importApplications"
+import { syncFirstCallQuests } from "@/lib/quests/firstCall"
 
 export const maxDuration = 300
 
@@ -111,6 +112,13 @@ export async function POST(req: Request) {
     " / 未マッチ " + result.unmatched +
     " / " + elapsed + "秒"
   )
+
+  // 通知が届かずCSVで初めて入った応募にも、初回電話のクエストを出す
+  try {
+    await syncFirstCallQuests()
+  } catch (e) {
+    console.error("[cron] クエストの作成に失敗しました", e)
+  }
 
   return NextResponse.json({ ok: true, elapsed, lastModified, ...result })
 }

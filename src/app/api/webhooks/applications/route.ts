@@ -6,6 +6,7 @@ import { NextResponse } from "next/server"
 import {
   MAX_BODY_BYTES, checkWebhookToken, parseWebhookBody, saveWebhookApplication,
 } from "@/lib/applicationWebhook"
+import { syncFirstCallQuests } from "@/lib/quests/firstCall"
 
 export async function POST(req: Request) {
   const auth = checkWebhookToken(req.headers.get("authorization"))
@@ -42,6 +43,15 @@ export async function POST(req: Request) {
   try {
     const result = await saveWebhookApplication(parsed.payload)
     console.log("[webhook/applications] " + result + " applicationId=" + parsed.payload.applicationId + " companyId=" + parsed.payload.companyId)
+
+    // 初回電話のクエストを作る。失敗しても応募の受け取りは成功として返す（あとで画面を開いたときや次の取り込みで作り直される）
+    if (result === "created") {
+      try {
+        await syncFirstCallQuests()
+      } catch (e) {
+        console.error("[webhook/applications] クエストの作成に失敗しました", e)
+      }
+    }
     return NextResponse.json({ ok: true, result })
   } catch (e) {
     console.error("[webhook/applications] 保存に失敗しました", e)

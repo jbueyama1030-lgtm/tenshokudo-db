@@ -50,6 +50,8 @@ export default function Sidebar({ userName }: { userName?: string }) {
       title: "メニュー",
       links: [
         { href: "/dashboard", label: "📊 ダッシュボード" },
+        // クエストは社内の全員向け（代理店ユーザーには出さない）
+        ...(!isAgency ? [{ href: "/quests", label: "⚔️ クエスト" }] : []),
         { href: "/companies", label: "🏢 企業一覧" },
         ...(!isAgency && (canSales || canProduction || canMarketer) ? [{ href: "/groups", label: "🏷 グループ・タグ" }] : []),
         ...(canSales ? [{ href: "/companies/new", label: "➕ 企業追加" }] : []),
@@ -76,6 +78,7 @@ export default function Sidebar({ userName }: { userName?: string }) {
           { href: "/companies/import-hearing", label: "📋 ヒアリングインポート" },
         ] : []),
         ...(canAdmin ? [{ href: "/users", label: "👥 ユーザー管理" }] : []),
+        ...(canAdmin ? [{ href: "/settings/automation", label: "⚙️ 自動化の設定" }] : []),
       ],
     },
   ].filter(s => s.links.length > 0)
