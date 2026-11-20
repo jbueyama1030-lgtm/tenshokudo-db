@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation"
 import ContractPeriods from "@/components/ContractPeriods"
 import ApplicantProfile from "@/components/ApplicantProfile"
 import CompanyGroupChips from "@/components/CompanyGroupChips"
+import CompanyCallLog from "@/components/CompanyCallLog"
 import { optionsTotal } from "@/lib/contractOptions"
 import { extractPref } from "@/lib/area"
 import { IconBuilding, IconChart, IconChevronRight, IconExternal, IconHome, IconPencil, IconPhone } from "@/components/icons"
@@ -1554,6 +1555,9 @@ export default function CompanyDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {/* 初回電話の記録（社内向け。代理店ユーザーには出さない） */}
+              {!isAgency && <CompanyCallLog companyId={company.id} />}
             </aside>
           </div>
         </div>

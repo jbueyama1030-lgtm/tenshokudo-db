@@ -38,13 +38,18 @@ export async function getProductionMembers(): Promise<MentionUser[]> {
   return members
 }
 
-export async function notifyChatwork(message: string): Promise<void> {
+/**
+ * チャットワークにメッセージを送る。
+ * roomId を省略すると CHATWORK_ROOM_ID のルームに送る。
+ * 戻り値: "sent" 送れた / "skipped" 環境変数が未設定で送らなかった / "failed" 送れなかった
+ */
+export async function notifyChatwork(message: string, roomIdOverride?: string): Promise<"sent" | "skipped" | "failed"> {
   const token = process.env.CHATWORK_API_TOKEN
-  const roomId = process.env.CHATWORK_ROOM_ID
+  const roomId = roomIdOverride || process.env.CHATWORK_ROOM_ID
 
   if (!token || !roomId) {
     console.log("[chatwork] 環境変数が未設定のため通知をスキップしました")
-    return
+    return "skipped"
   }
 
   try {
@@ -60,11 +65,14 @@ export async function notifyChatwork(message: string): Promise<void> {
     if (!res.ok) {
       const text = await res.text()
       console.error("[chatwork] 通知に失敗しました:", res.status, text)
+      return "failed"
     }
+    return "sent"
   } catch (e) {
     console.error("[chatwork] 通知でエラーが発生しました:", e)
+    return "failed"
   }
 }
 
-// 本番URL（通知メッセージ内のリンク用）
-export const APP_URL = "https://tenshokudo-db-production.up.railway.app"
+// 通知メッセージ内のリンク先。環境ごとのURL（AUTH_URL）を使い、無ければ本番URL
+export const APP_URL = (process.env.AUTH_URL || "https://tenshokudo-db-production.up.railway.app").replace(/\/+$/, "")
