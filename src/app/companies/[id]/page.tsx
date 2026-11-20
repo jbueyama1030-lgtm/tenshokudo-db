@@ -121,7 +121,7 @@ type Company = {
 type User = { id: string; name: string; roles?: string[]; role?: string; isActive?: boolean }
 
 /** 企業詳細のタブ */
-type DetailTab = "overview" | "contract" | "results" | "referral" | "production"
+type DetailTab = "overview" | "contract" | "results" | "calls" | "referral" | "production"
 
 // 制作案件の型とラベル
 type ProductionTask = {
@@ -380,6 +380,8 @@ export default function CompanyDetailPage() {
   const [userName, setUserName] = useState("")
   const [session, setSession] = useState<{ user?: { id?: string; role?: string; roles?: string[]; agencyId?: string | null } } | null>(null)
   const [tasks, setTasks] = useState<ProductionTask[]>([])
+  // 応募対応タブの数字（初回電話の対応待ちの件数）
+  const [callOpenCount, setCallOpenCount] = useState(0)
   const [taskForm, setTaskForm] = useState({ name: "", type: "new", priority: "medium", dueDate: "", memo: "" })
   const [taskLoading, setTaskLoading] = useState(false)
 
@@ -429,6 +431,7 @@ export default function CompanyDetailPage() {
       setSession(s ?? null)
     })
     loadTasks()
+    fetch("/api/companies/" + id + "/quests").then(r => (r.ok ? r.json() : null)).then(d => setCallOpenCount(d?.openCount ?? 0)).catch(() => {})
   }, [id])
 
   const set = (key: string, val: unknown) => setForm(f => ({ ...f, [key]: val }))
@@ -632,6 +635,8 @@ export default function CompanyDetailPage() {
     { key: "overview", label: "概要" },
     { key: "contract", label: "契約・売上" },
     { key: "results", label: "応募・実績" },
+    // 初回電話の記録（社内向け）。数字は対応待ちの件数
+    ...(!isAgency ? [{ key: "calls" as DetailTab, label: "応募対応", count: callOpenCount }] : []),
     { key: "referral", label: "人材紹介" },
     ...(!isAgency ? [{ key: "production" as DetailTab, label: "制作案件", count: tasks.length }] : []),
   ]
@@ -1331,6 +1336,8 @@ export default function CompanyDetailPage() {
                 </>
               )}
 
+              {tab === "calls" && !isAgency && <CompanyCallLog companyId={company.id} />}
+
               {tab === "production" && !isAgency && (
                 <>
           {/* 制作案件（企業一覧の「制作依頼」ボタンからここへ飛ぶ） */}
@@ -1555,9 +1562,6 @@ export default function CompanyDetailPage() {
                   </div>
                 </div>
               </div>
-
-              {/* 初回電話の記録（社内向け。代理店ユーザーには出さない） */}
-              {!isAgency && <CompanyCallLog companyId={company.id} />}
             </aside>
           </div>
         </div>
